@@ -1,0 +1,58 @@
+@import "tailwindcss";
+
+/*
+ * Spec §9 Token-Mapping (Tailwind 4 @theme):
+ *   bg-bg          ← Background base   (#05070B)
+ *   bg-bg-deep     ← Background deep   (#0B0F1A)
+ *   text-accent    ← Accent primary    (#5EE7DF)
+ *   text-accent-deep ← Accent secondary (#2BB3C0)
+ *   text-fg        ← Text primary      (#E6F1F5)
+ *   text-fg-muted  ← Text muted        (#8BA1AE)
+ *   bg-verdict-positive | -neutral | -negative
+ */
+
+@theme {
+  --color-bg: #05070b;
+  --color-bg-deep: #0b0f1a;
+  --color-accent: #5ee7df;
+  --color-accent-deep: #2bb3c0;
+  --color-fg: #e6f1f5;
+  --color-fg-muted: #8ba1ae;
+  --color-verdict-positive: #4ade80;
+  --color-verdict-neutral: #facc15;
+  --color-verdict-negative: #f87171;
+
+  --font-sans: var(--font-inter), system-ui, sans-serif;
+  --font-display: var(--font-space-grotesk), var(--font-inter), sans-serif;
+
+  --shadow-glow: 0 0 24px rgba(94, 231, 223, 0.25);
+  --animate-fade-up: fadeUp 320ms ease-out both;
+}
+
+@keyframes fadeUp {
+  0% {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+html,
+body {
+  background: var(--color-bg);
+  color: var(--color-fg);
+  font-feature-settings: "ss01", "cv11";
+}
+
+:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 3px;
+  border-radius: 4px;
+}
+
+.tabular {
+  font-variant-numeric: tabular-nums;
+}
