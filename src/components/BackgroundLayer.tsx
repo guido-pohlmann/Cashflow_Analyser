@@ -14,7 +14,7 @@ export function BackgroundLayer() {
         sizes="100vw"
         className="object-cover"
       />
-      <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,rgba(5,7,11,0)_0%,rgba(5,7,11,0.7)_60%,rgba(5,7,11,0.95)_100%)]" />
+      <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,rgba(5,7,11,0.15)_0%,rgba(5,7,11,0.55)_70%,rgba(5,7,11,0.85)_100%)]" />
     </div>
   );
 }

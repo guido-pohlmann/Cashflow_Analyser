@@ -40,9 +40,13 @@
   }
 }
 
-html,
-body {
+html {
   background: var(--color-bg);
+  color: var(--color-fg);
+}
+
+body {
+  background-color: transparent;
   color: var(--color-fg);
   font-feature-settings: "ss01", "cv11";
 }
