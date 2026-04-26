@@ -12,27 +12,11 @@ type Status =
   | { kind: "success"; data: CashflowResult }
   | { kind: "error"; code: ApiErrorCode };
 
-const MOCK_DELAY_MS = 800;
+const CLIENT_TIMEOUT_MS = 35_000;
 
-const MOCK_RESULT: CashflowResult = {
-  company: "ACME Corp",
-  period: "Q4 FY25",
-  currency: "USD",
-  figures: {
-    operating: 15.2,
-    investing: -3.4,
-    financing: -1.8,
-    freeCashflow: 11.8,
-    unit: "billion",
-  },
-  verdict: "positive",
-  interpretation:
-    "Der operative Cashflow ist mit 15,2 Mrd. USD deutlich positiv und übersteigt die Investitions- und Finanzierungsabflüsse, was zu einem starken freien Cashflow von 11,8 Mrd. USD führt. Das deutet auf eine robuste operative Ertragskraft im aktuellen Quartal hin.",
-  confidence: "high",
-  sourceUrl: "https://example.com/quarterly",
-  analyzedAt: "2026-04-25T18:30:00.000Z",
-  warnings: [],
-};
+interface ApiErrorBody {
+  error?: { code?: ApiErrorCode; message?: string };
+}
 
 function isValidHttpUrl(value: string): boolean {
   try {
@@ -71,16 +55,35 @@ export function UrlAnalyzerCard() {
     setStatus({ kind: "loading" });
     lastSubmittedUrl.current = submittedUrl;
 
-    // S1-Mock — wird in S2 durch echten fetch("/api/analyze") ersetzt.
-    await new Promise((r) => setTimeout(r, MOCK_DELAY_MS));
-    setStatus({
-      kind: "success",
-      data: {
-        ...MOCK_RESULT,
-        sourceUrl: submittedUrl,
-        analyzedAt: new Date().toISOString(),
-      },
-    });
+    const ac = new AbortController();
+    const timer = setTimeout(() => ac.abort(), CLIENT_TIMEOUT_MS);
+
+    try {
+      const response = await fetch("/api/analyze", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url: submittedUrl }),
+        signal: ac.signal,
+      });
+      clearTimeout(timer);
+
+      if (response.ok) {
+        const data = (await response.json()) as CashflowResult;
+        setStatus({ kind: "success", data });
+        return;
+      }
+
+      const body = (await response.json().catch(() => null)) as ApiErrorBody | null;
+      const code: ApiErrorCode = body?.error?.code ?? "INTERNAL";
+      setStatus({ kind: "error", code });
+    } catch (e: unknown) {
+      clearTimeout(timer);
+      if (e instanceof DOMException && e.name === "AbortError") {
+        setStatus({ kind: "error", code: "FETCH_TIMEOUT" });
+        return;
+      }
+      setStatus({ kind: "error", code: "INTERNAL" });
+    }
   }
 
   function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
