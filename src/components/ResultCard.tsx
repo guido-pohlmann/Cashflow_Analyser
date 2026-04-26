@@ -74,6 +74,7 @@ export function ResultCard({ data, onReset }: ResultCardProps) {
             href={data.sourceUrl}
             target="_blank"
             rel="noopener noreferrer"
+            aria-label={`Quell-URL ${data.sourceUrl} (öffnet in neuem Tab)`}
             className="break-all text-accent hover:text-accent-deep"
           >
             {data.sourceUrl}

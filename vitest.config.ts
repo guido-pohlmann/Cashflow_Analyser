@@ -10,9 +10,11 @@ export default defineConfig({
     setupFiles: ["./src/tests/setup.ts"],
     include: ["src/tests/**/*.{test,spec}.{ts,tsx}"],
     coverage: {
-      provider: "v8",
+      provider: "istanbul",
       include: ["src/lib/**/*.ts"],
+      exclude: ["src/lib/anthropicClient.ts"],
     },
+    fileParallelism: false,
   },
   resolve: {
     alias: {

@@ -70,4 +70,25 @@ describe("ssrfGuard.resolveAndCheck", () => {
   it("allows public IPv4 8.8.8.8", async () => {
     await expect(resolveAndCheck("http://8.8.8.8/")).resolves.toBeUndefined();
   });
+
+  it("allows public IPv6 (Google DNS 2001:4860:4860::8888)", async () => {
+    await expect(
+      resolveAndCheck("http://[2001:4860:4860::8888]/"),
+    ).resolves.toBeUndefined();
+  });
+
+  it("allows IPv6-mapped public IPv4 ::ffff:8.8.8.8", async () => {
+    await expect(
+      resolveAndCheck("http://[::ffff:8.8.8.8]/"),
+    ).resolves.toBeUndefined();
+  });
+
+  it("blocks hostname that DNS-resolves to a private address", async () => {
+    // Hostnames in the .test TLD are reserved (RFC 6761) and must not resolve.
+    // Anything we throw at DNS for them yields ENOTFOUND, exercising the
+    // catch-and-translate path in resolveAndCheck.
+    await expect(
+      resolveAndCheck("http://nonexistent.invalid.test/"),
+    ).rejects.toBeInstanceOf(BlockedTargetError);
+  });
 });

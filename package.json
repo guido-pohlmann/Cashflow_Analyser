@@ -9,7 +9,8 @@
     "lint": "eslint",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage --environment=node src/tests/ssrfGuard.test.ts src/tests/schema.test.ts src/tests/format.test.ts src/tests/fetchPage.test.ts src/tests/analyzeCashflow.test.ts src/tests/extractText.test.ts src/tests/cache.test.ts src/tests/errors.test.ts src/tests/getClientIp.test.ts src/tests/rateLimit.test.ts src/tests/sha256.test.ts src/tests/sanity.test.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.91.1",
@@ -33,7 +34,7 @@
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "@vitejs/plugin-react": "^6.0.1",
-    "@vitest/coverage-v8": "^4.1.5",
+    "@vitest/coverage-istanbul": "^4.1.5",
     "eslint": "^9",
     "eslint-config-next": "16.2.4",
     "jsdom-global": "^3.0.2",
