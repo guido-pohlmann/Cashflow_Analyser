@@ -1,36 +1,95 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Cashflow Analyzer
 
-## Getting Started
+Eine Web-App, die eine Unternehmens-URL entgegennimmt und in Sekunden eine automatisch ermittelte und interpretierte Cashflow-Auswertung der letzten Berichtsperiode liefert.
 
-First, run the development server:
+Quelle für Anforderungen: `PRD_Cashflow_Analyzer.md` und `SPEC_Cashflow_Analyzer.md` im übergeordneten Workspace.
+
+## Stack
+
+- **Next.js 16** (App Router) mit TypeScript strict
+- **Tailwind CSS v4**
+- **Anthropic SDK** mit Tool-Use + Prompt Caching
+- **`@mozilla/readability` + `jsdom`** für HTML→Text-Extraktion
+- **Zod** für Schema-Validierung (Request, Response, LLM-Output)
+- **Upstash Redis + Ratelimit** (optional, sonst In-Memory-Fallback)
+- **Vitest** + Testing Library
+
+## Setup
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+npm ci
+cp .env.example .env.local   # ANTHROPIC_API_KEY eintragen
+npm run dev                  # http://localhost:3000
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+### Environment-Variablen
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+| Variable | Pflicht | Zweck |
+|---|---|---|
+| `ANTHROPIC_API_KEY` | ja | Zugriff auf Claude API |
+| `ANTHROPIC_MODEL` | nein | Default: `claude-sonnet-4-6` |
+| `UPSTASH_REDIS_REST_URL` | nein | Wenn gesetzt: persistenter Cache + Rate-Limit |
+| `UPSTASH_REDIS_REST_TOKEN` | nein | s.o. |
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+Ohne Upstash läuft der Cache als In-Memory-`Map` pro Function-Instanz und das Rate-Limit als No-Op (mit Warnung im Log).
 
-## Learn More
+## Scripts
 
-To learn more about Next.js, take a look at the following resources:
+```bash
+npm run dev         # Dev-Server (Turbopack)
+npm run build       # Production-Build
+npm run start       # Production-Server
+npm run lint        # ESLint
+npm run typecheck   # tsc --noEmit
+npm run test        # Vitest single run
+npm run test:watch  # Vitest watch
+```
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Architektur
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+```
+Browser ──POST /api/analyze──► Next.js Route Handler (Node runtime)
+  ├── AnalyzeRequest.parse(body)         [Zod]
+  ├── checkRateLimit(ip)                 [Upstash, optional]
+  ├── cacheGet(sha256(url))              [Upstash KV / in-memory]
+  ├── fetchPage(url)                     [Timeout + SSRF + Redirect-Check + 2 MB Cap]
+  ├── extractText(html, url)             [Readability + Tabellen]
+  ├── analyzeCashflow(text, url)         [Anthropic Tool-Use + Prompt Cache]
+  ├── CashflowResult.parse(json)         [Zod, mit 1 Retry]
+  └── cachePut(key, result, 30 min)
+  ──► CashflowResult JSON
+```
 
-## Deploy on Vercel
+Die Landingpage selbst ist statisch pre-rendered. Nur `/api/analyze` ist dynamisch (Node-Runtime, `maxDuration = 30`).
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+## Sicherheit
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+- **SSRF-Schutz:** Vor jedem Hop Hostname/IP gegen IPv4/IPv6-Blocklisten geprüft (Loopback, RFC1918, Link-Local inkl. Cloud-Metadata-IP, IPv4-mapped IPv6, ULA, FE80). Hostname-Blockliste für `localhost`, `metadata.google.internal`.
+- **Redirect-Limit:** maximal 5 Hops, jeder neu SSRF-validiert.
+- **Body-Limit:** 2 MB, gestreamt per Reader, sauberer Abbruch bei Überschreitung.
+- **Content-Type-Whitelist:** nur `text/html` und `application/xhtml+xml`.
+- **Timeout:** 15 s server-seitig (`AbortController`), 35 s client-seitig.
+- **CSP** + `Referrer-Policy`, `X-Content-Type-Options: nosniff`, `Permissions-Policy` werden in `next.config.ts` für alle Routen gesetzt.
+- **Keine Persistenz:** URLs und Ergebnisse landen weder in einer DB noch im Log.
+- **Secrets** ausschließlich über Environment-Variablen, `.env.local` ist gitignored.
+
+## Limitierungen (MVP)
+
+- **Kein PDF-Support.** Nur HTML/XHTML; PDF-URLs werden mit `FETCH_FAILED` abgelehnt.
+- **Kein JavaScript-Rendering.** Reines `fetch`; SPAs ohne SSR liefern oft zu wenig Text → `CONTENT_TOO_SHORT`.
+- **Kein Anti-Bot-Bypass.** Cloudflare-Challenge & Co. führen zu `FETCH_FAILED`.
+- **Nur die letzte Periode.** Kein Mehrjahres-/Mehrquartals-Vergleich.
+- **Beste-Bemühen-Genauigkeit.** Der LLM kann Zahlen falsch zuordnen, besonders bei Pressemitteilungen ohne klare Tabellen.
+
+## Disclaimer
+
+> Automatisch generiert, kann Fehler enthalten. **Keine Anlageberatung.**
+
+Ergebnisse dürfen nicht als Grundlage für Anlageentscheidungen verwendet werden. Es handelt sich um eine schnelle, automatisierte Erstauswertung — keine Empfehlung, keine Beratung, keine Garantie für Richtigkeit oder Vollständigkeit.
+
+## Deployment
+
+- **Vercel:** GitHub-Integration, `main` = Production, Preview-Deployments pro PR.
+- **Tier:** Vercel Hobby für MVP.
+- **Region:** `fra1` (Frankfurt) für niedrige Latenz.
+- **Runtime:** Node (nicht Edge — `jsdom` benötigt Node-APIs).

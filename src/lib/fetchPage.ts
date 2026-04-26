@@ -3,6 +3,7 @@ import {
   FetchFailedError,
   FetchTimeoutError,
 } from "./errors";
+import { resolveAndCheck } from "./ssrfGuard";
 
 export interface FetchedPage {
   finalUrl: string;
@@ -11,74 +12,156 @@ export interface FetchedPage {
 }
 
 const DEFAULT_TIMEOUT_MS = 15_000;
+const MAX_BYTES = 2_000_000;
+const MAX_REDIRECTS = 5;
 const USER_AGENT =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36";
 
 const ALLOWED_CONTENT_TYPE_RE = /^(text\/html|application\/xhtml\+xml)/i;
+const CHARSET_RE = /charset=([^;]+)/i;
 
-/**
- * S2 minimal-Implementation: HTTPS-only Check, AbortController-Timeout,
- * Content-Type-Whitelist. SSRF-Guard, Streaming-Body-Cap und manuelle
- * Redirect-Kette folgen in S3 (`ssrfGuard.ts`).
- */
+function parseCharset(contentType: string): string {
+  const m = CHARSET_RE.exec(contentType);
+  if (!m) return "utf-8";
+  return m[1]!.trim().replace(/^["']|["']$/g, "").toLowerCase() || "utf-8";
+}
+
+async function readBodyCapped(
+  reader: ReadableStreamDefaultReader<Uint8Array>,
+  cap: number,
+): Promise<Uint8Array> {
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    if (!value) continue;
+    total += value.length;
+    if (total > cap) {
+      await reader.cancel();
+      throw new FetchFailedError(
+        `Antwort überschreitet Größenlimit (${cap} Bytes).`,
+      );
+    }
+    chunks.push(value);
+  }
+  const buf = new Uint8Array(total);
+  let off = 0;
+  for (const c of chunks) {
+    buf.set(c, off);
+    off += c.length;
+  }
+  return buf;
+}
+
 export async function fetchPage(
-  url: string,
-  opts: { timeoutMs?: number } = {},
+  rawUrl: string,
+  opts: { timeoutMs?: number; maxBytes?: number } = {},
 ): Promise<FetchedPage> {
-  const u = new URL(url);
-  if (u.protocol !== "http:" && u.protocol !== "https:") {
+  const timeoutMs = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+  const maxBytes = opts.maxBytes ?? MAX_BYTES;
+
+  // Initial protocol gate.
+  const initial = new URL(rawUrl);
+  if (initial.protocol !== "http:" && initial.protocol !== "https:") {
     throw new BlockedTargetError(
-      `Protokoll ${u.protocol} ist nicht erlaubt — nur http(s).`,
+      `Protokoll ${initial.protocol} ist nicht erlaubt — nur http(s).`,
     );
   }
 
   const ac = new AbortController();
-  const timer = setTimeout(
-    () => ac.abort(new Error("timeout")),
-    opts.timeoutMs ?? DEFAULT_TIMEOUT_MS,
-  );
+  const timer = setTimeout(() => ac.abort(new Error("timeout")), timeoutMs);
 
   try {
-    const response = await fetch(url, {
-      method: "GET",
-      signal: ac.signal,
-      headers: {
-        "User-Agent": USER_AGENT,
-        Accept: "text/html,application/xhtml+xml;q=0.9,*/*;q=0.8",
-        "Accept-Language": "de,en;q=0.7",
-      },
-      redirect: "follow",
-    });
+    let currentUrl = rawUrl;
+    for (let hop = 0; hop <= MAX_REDIRECTS; hop++) {
+      // SSRF check für jeden Hop neu.
+      const u = new URL(currentUrl);
+      if (u.protocol !== "http:" && u.protocol !== "https:") {
+        throw new BlockedTargetError(
+          `Redirect-Protokoll ${u.protocol} ist nicht erlaubt.`,
+        );
+      }
+      await resolveAndCheck(currentUrl);
 
-    if (!response.ok) {
-      throw new FetchFailedError(
-        `HTTP ${response.status} ${response.statusText}`,
-      );
+      const response = await fetch(currentUrl, {
+        method: "GET",
+        signal: ac.signal,
+        headers: {
+          "User-Agent": USER_AGENT,
+          Accept: "text/html,application/xhtml+xml;q=0.9,*/*;q=0.8",
+          "Accept-Language": "de,en;q=0.7",
+        },
+        redirect: "manual",
+      });
+
+      // Redirect handling.
+      if (response.status >= 300 && response.status < 400) {
+        const loc = response.headers.get("location");
+        if (!loc) {
+          throw new FetchFailedError(
+            `Redirect ${response.status} ohne Location-Header.`,
+          );
+        }
+        if (hop === MAX_REDIRECTS) {
+          throw new FetchFailedError(
+            `Zu viele Redirects (>${MAX_REDIRECTS}).`,
+          );
+        }
+        currentUrl = new URL(loc, currentUrl).toString();
+        // discard body of the redirect response
+        await response.body?.cancel().catch(() => undefined);
+        continue;
+      }
+
+      if (!response.ok) {
+        throw new FetchFailedError(
+          `HTTP ${response.status} ${response.statusText}`,
+        );
+      }
+
+      const contentType = response.headers.get("content-type") ?? "";
+      if (!ALLOWED_CONTENT_TYPE_RE.test(contentType)) {
+        throw new FetchFailedError(
+          `Nicht unterstützter Content-Type: ${contentType || "unbekannt"}.`,
+        );
+      }
+
+      if (!response.body) {
+        throw new FetchFailedError("Antwort hat keinen Body.");
+      }
+
+      const buf = await readBodyCapped(response.body.getReader(), maxBytes);
+      const charset = parseCharset(contentType);
+      let bodyHtml: string;
+      try {
+        bodyHtml = new TextDecoder(charset, { fatal: false }).decode(buf);
+      } catch {
+        bodyHtml = new TextDecoder("utf-8", { fatal: false }).decode(buf);
+      }
+
+      return {
+        finalUrl: response.url || currentUrl,
+        contentType,
+        bodyHtml,
+      };
     }
 
-    const contentType = response.headers.get("content-type") ?? "";
-    if (!ALLOWED_CONTENT_TYPE_RE.test(contentType)) {
-      throw new FetchFailedError(
-        `Nicht unterstützter Content-Type: ${contentType || "unbekannt"}.`,
-      );
-    }
-
-    const bodyHtml = await response.text();
-    return {
-      finalUrl: response.url,
-      contentType,
-      bodyHtml,
-    };
+    throw new FetchFailedError(`Zu viele Redirects (>${MAX_REDIRECTS}).`);
   } catch (e: unknown) {
     if (
       e instanceof Error &&
       (e.name === "AbortError" || e.message === "timeout")
     ) {
       throw new FetchTimeoutError(
-        `Fetch timeout nach ${(opts.timeoutMs ?? DEFAULT_TIMEOUT_MS) / 1000}s.`,
+        `Fetch timeout nach ${timeoutMs / 1000}s.`,
       );
     }
-    if (e instanceof BlockedTargetError || e instanceof FetchFailedError) {
+    if (
+      e instanceof BlockedTargetError ||
+      e instanceof FetchFailedError ||
+      e instanceof FetchTimeoutError
+    ) {
       throw e;
     }
     throw new FetchFailedError(
