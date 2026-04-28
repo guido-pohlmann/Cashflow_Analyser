@@ -1,5 +1,5 @@
 import { Readability } from "@mozilla/readability";
-import { JSDOM } from "jsdom";
+import { parseHTML } from "linkedom";
 
 export interface Extracted {
   title: string | null;
@@ -26,16 +26,22 @@ function serializeTables(doc: Document): string[] {
 }
 
 export function extractText(html: string, baseUrl: string): Extracted {
-  const dom = new JSDOM(html, { url: baseUrl });
-  const doc = dom.window.document;
+  const { document: doc } = parseHTML(html);
+
+  // Readability liest baseURI vom Dokument; bei linkedom über <base> setzen.
+  if (!doc.querySelector("base")) {
+    const base = doc.createElement("base");
+    base.setAttribute("href", baseUrl);
+    (doc.head ?? doc.documentElement).prepend(base);
+  }
 
   // Tabellen vor Readability extrahieren — Readability kann sie verwerfen.
-  const tables = serializeTables(doc);
+  const tables = serializeTables(doc as unknown as Document);
 
   const docTitle = doc.title?.trim() || null;
 
   // Readability mutiert das Dokument; danach nicht mehr verwenden.
-  const reader = new Readability(doc);
+  const reader = new Readability(doc as unknown as Document);
   const article = reader.parse();
 
   const articleTitle = article?.title?.trim() || null;
