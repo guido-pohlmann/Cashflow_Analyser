@@ -5,19 +5,29 @@ import {
 } from "./errors";
 import { resolveAndCheck } from "./ssrfGuard";
 
-export interface FetchedPage {
-  finalUrl: string;
-  contentType: string;
-  bodyHtml: string;
-}
+export type FetchedPage =
+  | {
+      mediaType: "text/html";
+      finalUrl: string;
+      contentType: string;
+      bodyHtml: string;
+    }
+  | {
+      mediaType: "application/pdf";
+      finalUrl: string;
+      contentType: string;
+      bodyBytes: Uint8Array;
+    };
 
 const DEFAULT_TIMEOUT_MS = 15_000;
-const MAX_BYTES = 2_000_000;
+const MAX_BYTES_HTML = 2_000_000;
+const MAX_BYTES_PDF = 10_000_000;
 const MAX_REDIRECTS = 5;
 const USER_AGENT =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36";
 
-const ALLOWED_CONTENT_TYPE_RE = /^(text\/html|application\/xhtml\+xml)/i;
+const HTML_CONTENT_TYPE_RE = /^(text\/html|application\/xhtml\+xml)/i;
+const PDF_CONTENT_TYPE_RE = /^application\/pdf\b/i;
 const CHARSET_RE = /charset=([^;]+)/i;
 
 function parseCharset(contentType: string): string {
@@ -56,12 +66,16 @@ async function readBodyCapped(
 
 export async function fetchPage(
   rawUrl: string,
-  opts: { timeoutMs?: number; maxBytes?: number } = {},
+  opts: {
+    timeoutMs?: number;
+    maxBytesHtml?: number;
+    maxBytesPdf?: number;
+  } = {},
 ): Promise<FetchedPage> {
   const timeoutMs = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS;
-  const maxBytes = opts.maxBytes ?? MAX_BYTES;
+  const maxBytesHtml = opts.maxBytesHtml ?? MAX_BYTES_HTML;
+  const maxBytesPdf = opts.maxBytesPdf ?? MAX_BYTES_PDF;
 
-  // Initial protocol gate.
   const initial = new URL(rawUrl);
   if (initial.protocol !== "http:" && initial.protocol !== "https:") {
     throw new BlockedTargetError(
@@ -75,7 +89,6 @@ export async function fetchPage(
   try {
     let currentUrl = rawUrl;
     for (let hop = 0; hop <= MAX_REDIRECTS; hop++) {
-      // SSRF check für jeden Hop neu.
       const u = new URL(currentUrl);
       if (u.protocol !== "http:" && u.protocol !== "https:") {
         throw new BlockedTargetError(
@@ -89,13 +102,13 @@ export async function fetchPage(
         signal: ac.signal,
         headers: {
           "User-Agent": USER_AGENT,
-          Accept: "text/html,application/xhtml+xml;q=0.9,*/*;q=0.8",
+          Accept:
+            "text/html,application/xhtml+xml,application/pdf;q=0.95,*/*;q=0.8",
           "Accept-Language": "de,en;q=0.7",
         },
         redirect: "manual",
       });
 
-      // Redirect handling.
       if (response.status >= 300 && response.status < 400) {
         const loc = response.headers.get("location");
         if (!loc) {
@@ -109,7 +122,6 @@ export async function fetchPage(
           );
         }
         currentUrl = new URL(loc, currentUrl).toString();
-        // discard body of the redirect response
         await response.body?.cancel().catch(() => undefined);
         continue;
       }
@@ -121,7 +133,9 @@ export async function fetchPage(
       }
 
       const contentType = response.headers.get("content-type") ?? "";
-      if (!ALLOWED_CONTENT_TYPE_RE.test(contentType)) {
+      const isHtml = HTML_CONTENT_TYPE_RE.test(contentType);
+      const isPdf = PDF_CONTENT_TYPE_RE.test(contentType);
+      if (!isHtml && !isPdf) {
         throw new FetchFailedError(
           `Nicht unterstützter Content-Type: ${contentType || "unbekannt"}.`,
         );
@@ -131,7 +145,19 @@ export async function fetchPage(
         throw new FetchFailedError("Antwort hat keinen Body.");
       }
 
-      const buf = await readBodyCapped(response.body.getReader(), maxBytes);
+      const cap = isPdf ? maxBytesPdf : maxBytesHtml;
+      const buf = await readBodyCapped(response.body.getReader(), cap);
+      const finalUrl = response.url || currentUrl;
+
+      if (isPdf) {
+        return {
+          mediaType: "application/pdf",
+          finalUrl,
+          contentType,
+          bodyBytes: buf,
+        };
+      }
+
       const charset = parseCharset(contentType);
       let bodyHtml: string;
       try {
@@ -141,7 +167,8 @@ export async function fetchPage(
       }
 
       return {
-        finalUrl: response.url || currentUrl,
+        mediaType: "text/html",
+        finalUrl,
         contentType,
         bodyHtml,
       };

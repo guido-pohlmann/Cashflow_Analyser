@@ -72,6 +72,13 @@ export class RateLimitedError extends CashflowError {
   }
 }
 
+export class PdfParsingFailedError extends CashflowError {
+  constructor(message = "PDF parsing failed") {
+    super("PDF_PARSING_FAILED", message);
+    this.name = "PdfParsingFailedError";
+  }
+}
+
 const HTTP_STATUS: Record<ApiErrorCode, number> = {
   INVALID_URL: 400,
   BLOCKED_TARGET: 400,
@@ -82,6 +89,7 @@ const HTTP_STATUS: Record<ApiErrorCode, number> = {
   LLM_FAILED: 503,
   LLM_INVALID_OUTPUT: 502,
   RATE_LIMITED: 429,
+  PDF_PARSING_FAILED: 422,
   INTERNAL: 500,
 };
 

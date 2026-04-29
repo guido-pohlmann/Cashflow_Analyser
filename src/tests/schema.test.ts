@@ -24,6 +24,7 @@ const validResult = {
     "Der operative Cashflow zeigt eine deutlich positive Entwicklung. Investitionen wurden überwiegend aus eigener Kraft finanziert.",
   confidence: "high",
   sourceUrl: "https://investor.example.com/q4",
+  sourceMediaType: "text/html",
   analyzedAt: "2026-04-25T12:00:00.000Z",
   warnings: [],
 } as const;
@@ -168,6 +169,7 @@ describe("ApiErrorCode", () => {
     "LLM_FAILED",
     "LLM_INVALID_OUTPUT",
     "RATE_LIMITED",
+    "PDF_PARSING_FAILED",
     "INTERNAL",
   ] as const)("accepts %s", (code) => {
     expect(ApiErrorCode.safeParse(code).success).toBe(true);
@@ -175,5 +177,23 @@ describe("ApiErrorCode", () => {
 
   it("rejects unknown code", () => {
     expect(ApiErrorCode.safeParse("UNKNOWN").success).toBe(false);
+  });
+});
+
+describe("sourceMediaType", () => {
+  it("accepts application/pdf", () => {
+    const out = CashflowResult.safeParse({
+      ...validResult,
+      sourceMediaType: "application/pdf",
+    });
+    expect(out.success).toBe(true);
+  });
+
+  it("rejects unknown media types", () => {
+    const out = CashflowResult.safeParse({
+      ...validResult,
+      sourceMediaType: "text/plain",
+    });
+    expect(out.success).toBe(false);
   });
 });

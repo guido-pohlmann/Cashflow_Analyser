@@ -88,6 +88,8 @@ describe("fetchPage", () => {
         .mockResolvedValue(htmlResponse("<html><body>OK</body></html>")),
     );
     const out = await fetchPage("https://example.com/page");
+    expect(out.mediaType).toBe("text/html");
+    if (out.mediaType !== "text/html") throw new Error("unreachable");
     expect(out.bodyHtml).toContain("OK");
     expect(out.contentType).toMatch(/text\/html/);
   });
@@ -99,6 +101,47 @@ describe("fetchPage", () => {
     );
     await expect(fetchPage("https://example.com/x")).rejects.toBeInstanceOf(
       BlockedTargetError,
+    );
+  });
+
+  it("accepts application/pdf and returns bodyBytes", async () => {
+    const pdfBytes = new Uint8Array([0x25, 0x50, 0x44, 0x46, 0x2d, 0x31, 0x2e, 0x34]); // "%PDF-1.4"
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        new Response(pdfBytes, {
+          status: 200,
+          headers: { "content-type": "application/pdf" },
+        }),
+      ),
+    );
+    const out = await fetchPage("https://example.com/q4.pdf");
+    expect(out.mediaType).toBe("application/pdf");
+    if (out.mediaType !== "application/pdf") throw new Error("unreachable");
+    expect(out.bodyBytes.length).toBe(pdfBytes.length);
+    expect(out.contentType).toMatch(/application\/pdf/);
+  });
+
+  it("rejects PDFs above 10 MB cap", async () => {
+    const big = new Uint8Array(11 * 1024 * 1024);
+    big.set([0x25, 0x50, 0x44, 0x46], 0);
+    const stream = new ReadableStream<Uint8Array>({
+      start(c) {
+        c.enqueue(big);
+        c.close();
+      },
+    });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        new Response(stream, {
+          status: 200,
+          headers: { "content-type": "application/pdf" },
+        }),
+      ),
+    );
+    await expect(fetchPage("https://example.com/huge.pdf")).rejects.toBeInstanceOf(
+      FetchFailedError,
     );
   });
 });

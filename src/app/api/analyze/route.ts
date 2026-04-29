@@ -7,6 +7,7 @@ import {
   mapError,
 } from "@/lib/errors";
 import { extractText } from "@/lib/extractText";
+import { extractTextFromPdf } from "@/lib/extractTextPdf";
 import { fetchPage } from "@/lib/fetchPage";
 import { getClientIp } from "@/lib/getClientIp";
 import { checkRateLimit } from "@/lib/rateLimit";
@@ -46,7 +47,10 @@ export async function POST(req: Request): Promise<Response> {
     }
 
     const page = await fetchPage(url);
-    const extracted = extractText(page.bodyHtml, page.finalUrl);
+    const extracted =
+      page.mediaType === "application/pdf"
+        ? await extractTextFromPdf(page.bodyBytes)
+        : extractText(page.bodyHtml, page.finalUrl);
     if (extracted.charCount < 500) {
       throw new ContentTooShortError(
         "Auf der Seite wurden keine auswertbaren Inhalte gefunden.",
@@ -56,6 +60,7 @@ export async function POST(req: Request): Promise<Response> {
     const result = await analyzeCashflow({
       text: extracted.text,
       sourceUrl: page.finalUrl,
+      sourceMediaType: page.mediaType,
     });
 
     await cachePut(cacheKey, result, CACHE_TTL_SECONDS);

@@ -14,6 +14,7 @@ describe("schema sanity", () => {
   it("ApiErrorCode covers all spec §5 codes", () => {
     expect(ApiErrorCode.options).toContain("BLOCKED_TARGET");
     expect(ApiErrorCode.options).toContain("RATE_LIMITED");
-    expect(ApiErrorCode.options.length).toBe(10);
+    expect(ApiErrorCode.options).toContain("PDF_PARSING_FAILED");
+    expect(ApiErrorCode.options.length).toBe(11);
   });
 });

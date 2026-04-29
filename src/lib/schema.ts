@@ -23,6 +23,9 @@ export const CashflowFigures = z.object({
 });
 export type CashflowFigures = z.infer<typeof CashflowFigures>;
 
+export const SourceMediaType = z.enum(["text/html", "application/pdf"]);
+export type SourceMediaType = z.infer<typeof SourceMediaType>;
+
 export const CashflowResult = z.object({
   company: z.string().nullable(),
   period: z.string().nullable(),
@@ -35,6 +38,7 @@ export const CashflowResult = z.object({
   interpretation: z.string().min(30).max(1200),
   confidence: Confidence,
   sourceUrl: z.url(),
+  sourceMediaType: SourceMediaType,
   analyzedAt: z.iso.datetime(),
   warnings: z.array(z.string()).max(10),
 });
@@ -55,6 +59,7 @@ export const ApiErrorCode = z.enum([
   "LLM_FAILED",
   "LLM_INVALID_OUTPUT",
   "RATE_LIMITED",
+  "PDF_PARSING_FAILED",
   "INTERNAL",
 ]);
 export type ApiErrorCode = z.infer<typeof ApiErrorCode>;

@@ -54,10 +54,12 @@ describe("analyzeCashflow", () => {
     const result = await analyzeCashflow({
       text: "Cash flow from operations was $15.2 billion in Q4 FY25.",
       sourceUrl: "https://example.com/q4",
+      sourceMediaType: "text/html",
     });
     expect(result.company).toBe("ACME Corp");
     expect(result.figures.operating).toBe(15.2);
     expect(result.sourceUrl).toBe("https://example.com/q4");
+    expect(result.sourceMediaType).toBe("text/html");
     expect(result.analyzedAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
     expect(mockCreate).toHaveBeenCalledTimes(1);
   });
@@ -69,6 +71,7 @@ describe("analyzeCashflow", () => {
     const result = await analyzeCashflow({
       text: "fake",
       sourceUrl: "https://example.com",
+      sourceMediaType: "text/html",
     });
     expect(mockCreate).toHaveBeenCalledTimes(2);
     expect(result.confidence).toBe("high");
@@ -79,7 +82,11 @@ describe("analyzeCashflow", () => {
     mockCreate.mockResolvedValueOnce(toolUseResponse(tooShort));
     mockCreate.mockResolvedValueOnce(toolUseResponse(tooShort));
     await expect(
-      analyzeCashflow({ text: "fake", sourceUrl: "https://example.com" }),
+      analyzeCashflow({
+        text: "fake",
+        sourceUrl: "https://example.com",
+        sourceMediaType: "text/html",
+      }),
     ).rejects.toThrow(LlmInvalidOutputError);
     expect(mockCreate).toHaveBeenCalledTimes(2);
   });
@@ -100,7 +107,11 @@ describe("analyzeCashflow", () => {
     };
     mockCreate.mockResolvedValueOnce(toolUseResponse(noData));
     await expect(
-      analyzeCashflow({ text: "fake", sourceUrl: "https://example.com" }),
+      analyzeCashflow({
+        text: "fake",
+        sourceUrl: "https://example.com",
+        sourceMediaType: "text/html",
+      }),
     ).rejects.toThrow(NoCashflowDataError);
   });
 
@@ -120,6 +131,7 @@ describe("analyzeCashflow", () => {
     const result = await analyzeCashflow({
       text: "fake",
       sourceUrl: "https://example.com",
+      sourceMediaType: "text/html",
     });
     expect(result.confidence).toBe("high");
   });

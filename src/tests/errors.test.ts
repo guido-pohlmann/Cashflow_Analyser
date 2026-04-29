@@ -9,6 +9,7 @@ import {
   LlmFailedError,
   LlmInvalidOutputError,
   NoCashflowDataError,
+  PdfParsingFailedError,
   RateLimitedError,
   mapError,
 } from "@/lib/errors";
@@ -29,6 +30,7 @@ const cases: Array<{
   { name: "LlmFailed",      err: new LlmFailedError("500"),          status: 503, code: "LLM_FAILED" },
   { name: "LlmInvalidOut",  err: new LlmInvalidOutputError("schema"),status: 502, code: "LLM_INVALID_OUTPUT" },
   { name: "RateLimited",    err: new RateLimitedError("too many"),   status: 429, code: "RATE_LIMITED" },
+  { name: "PdfParsingFailed", err: new PdfParsingFailedError("broken"), status: 422, code: "PDF_PARSING_FAILED" },
 ];
 
 describe("mapError", () => {
@@ -68,5 +70,9 @@ describe("CashflowError subclasses set name + code", () => {
 
   it("RateLimitedError exposes code RATE_LIMITED", () => {
     expect(new RateLimitedError().code).toBe("RATE_LIMITED");
+  });
+
+  it("PdfParsingFailedError exposes code PDF_PARSING_FAILED", () => {
+    expect(new PdfParsingFailedError().code).toBe("PDF_PARSING_FAILED");
   });
 });

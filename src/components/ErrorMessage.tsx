@@ -14,6 +14,8 @@ const COPY: Record<ApiErrorCode, string> = {
   LLM_INVALID_OUTPUT:
     "Der Analyse-Service ist gerade überlastet. Bitte in einem Moment erneut versuchen.",
   RATE_LIMITED: "Zu viele Anfragen. Bitte in einer Stunde erneut versuchen.",
+  PDF_PARSING_FAILED:
+    "Das PDF konnte nicht ausgewertet werden (beschädigt oder enthält nur Bilder). Versuche eine HTML-Quelle oder ein anderes PDF.",
   INTERNAL: "Unerwarteter Fehler. Bitte erneut versuchen.",
 };
 

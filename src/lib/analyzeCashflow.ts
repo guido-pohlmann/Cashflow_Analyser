@@ -4,7 +4,7 @@ import {
   LlmInvalidOutputError,
   NoCashflowDataError,
 } from "./errors";
-import { CashflowResult } from "./schema";
+import { CashflowResult, type SourceMediaType } from "./schema";
 
 const TOOL_NAME = "report_cashflow";
 
@@ -148,12 +148,15 @@ async function callClaude(userText: string): Promise<CallResult> {
 export async function analyzeCashflow(params: {
   text: string;
   sourceUrl: string;
+  sourceMediaType: SourceMediaType;
 }): Promise<CashflowResult> {
-  const userMessage = `Quell-URL: ${params.sourceUrl}\n\n<text>\n${params.text}\n</text>`;
+  const sourceTag =
+    params.sourceMediaType === "application/pdf" ? "PDF" : "HTML";
+  const userMessage = `Quell-URL: ${params.sourceUrl}\nQuelltyp: ${sourceTag}\n\n<text>\n${params.text}\n</text>`;
 
   // Erster Call
   let { input } = await callClaude(userMessage);
-  let merged = withMeta(input, params.sourceUrl);
+  let merged = withMeta(input, params.sourceUrl, params.sourceMediaType);
   let parsed = CashflowResult.safeParse(merged);
 
   // Ein Retry bei Schema-Fail
@@ -171,7 +174,7 @@ export async function analyzeCashflow(params: {
         "Schema-Validierung fehlgeschlagen, Retry-Call konnte nicht ausgeführt werden.",
       );
     }
-    merged = withMeta(input, params.sourceUrl);
+    merged = withMeta(input, params.sourceUrl, params.sourceMediaType);
     parsed = CashflowResult.safeParse(merged);
     if (!parsed.success) {
       throw new LlmInvalidOutputError(
@@ -198,11 +201,16 @@ export async function analyzeCashflow(params: {
   return result;
 }
 
-function withMeta(rawInput: unknown, sourceUrl: string): unknown {
+function withMeta(
+  rawInput: unknown,
+  sourceUrl: string,
+  sourceMediaType: SourceMediaType,
+): unknown {
   if (typeof rawInput !== "object" || rawInput === null) return rawInput;
   return {
     ...rawInput,
     sourceUrl,
+    sourceMediaType,
     analyzedAt: new Date().toISOString(),
   };
 }
