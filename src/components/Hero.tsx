@@ -5,7 +5,8 @@ export function Hero() {
         Cashflow Analyzer
       </h1>
       <p className="mt-4 text-base text-fg-muted sm:text-lg">
-        URL einfügen, Cashflow-Analyse der letzten Berichtsperiode erhalten.
+        Firmenname oder Ticker eingeben — Cashflow-Analyse der letzten
+        Berichtsperiode erhalten.
       </p>
     </header>
   );

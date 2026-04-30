@@ -39,13 +39,15 @@ export const CashflowResult = z.object({
   confidence: Confidence,
   sourceUrl: z.url(),
   sourceMediaType: SourceMediaType,
+  requestedQuery: z.string(),
+  sourceResolved: z.boolean(),
   analyzedAt: z.iso.datetime(),
   warnings: z.array(z.string()).max(10),
 });
 export type CashflowResult = z.infer<typeof CashflowResult>;
 
 export const AnalyzeRequest = z.object({
-  url: z.url().max(2048),
+  query: z.string().trim().min(2).max(200),
 });
 export type AnalyzeRequest = z.infer<typeof AnalyzeRequest>;
 
@@ -60,6 +62,7 @@ export const ApiErrorCode = z.enum([
   "LLM_INVALID_OUTPUT",
   "RATE_LIMITED",
   "PDF_PARSING_FAILED",
+  "NO_SOURCE_FOUND",
   "INTERNAL",
 ]);
 export type ApiErrorCode = z.infer<typeof ApiErrorCode>;

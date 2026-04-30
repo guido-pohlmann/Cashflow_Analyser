@@ -9,6 +9,7 @@ import {
   LlmFailedError,
   LlmInvalidOutputError,
   NoCashflowDataError,
+  NoSourceFoundError,
   PdfParsingFailedError,
   RateLimitedError,
   mapError,
@@ -31,6 +32,7 @@ const cases: Array<{
   { name: "LlmInvalidOut",  err: new LlmInvalidOutputError("schema"),status: 502, code: "LLM_INVALID_OUTPUT" },
   { name: "RateLimited",    err: new RateLimitedError("too many"),   status: 429, code: "RATE_LIMITED" },
   { name: "PdfParsingFailed", err: new PdfParsingFailedError("broken"), status: 422, code: "PDF_PARSING_FAILED" },
+  { name: "NoSourceFound", err: new NoSourceFoundError("nope"), status: 422, code: "NO_SOURCE_FOUND" },
 ];
 
 describe("mapError", () => {
@@ -74,5 +76,9 @@ describe("CashflowError subclasses set name + code", () => {
 
   it("PdfParsingFailedError exposes code PDF_PARSING_FAILED", () => {
     expect(new PdfParsingFailedError().code).toBe("PDF_PARSING_FAILED");
+  });
+
+  it("NoSourceFoundError exposes code NO_SOURCE_FOUND", () => {
+    expect(new NoSourceFoundError().code).toBe("NO_SOURCE_FOUND");
   });
 });

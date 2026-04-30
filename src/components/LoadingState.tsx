@@ -1,10 +1,20 @@
-export function LoadingState() {
+interface LoadingStateProps {
+  phase?: "url" | "search-and-analyze";
+}
+
+const COPY: Record<NonNullable<LoadingStateProps["phase"]>, string> = {
+  url: "Analyse läuft …",
+  "search-and-analyze": "Suche aktuelle Quelle und analysiere …",
+};
+
+export function LoadingState({ phase = "url" }: LoadingStateProps) {
   return (
     <div
       role="status"
-      aria-label="Analyse läuft"
+      aria-label={COPY[phase]}
       className="w-full max-w-2xl rounded-2xl border border-accent-deep/20 bg-bg-deep/60 p-6 backdrop-blur-xl"
     >
+      <p className="mb-4 text-sm text-fg-muted">{COPY[phase]}</p>
       <div className="flex animate-pulse flex-col gap-4">
         <div className="h-6 w-1/2 rounded bg-fg-muted/20" />
         <div className="h-4 w-1/3 rounded bg-fg-muted/15" />

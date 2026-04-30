@@ -149,14 +149,23 @@ export async function analyzeCashflow(params: {
   text: string;
   sourceUrl: string;
   sourceMediaType: SourceMediaType;
+  requestedQuery: string;
+  sourceResolved: boolean;
 }): Promise<CashflowResult> {
   const sourceTag =
     params.sourceMediaType === "application/pdf" ? "PDF" : "HTML";
   const userMessage = `Quell-URL: ${params.sourceUrl}\nQuelltyp: ${sourceTag}\n\n<text>\n${params.text}\n</text>`;
 
+  const meta = {
+    sourceUrl: params.sourceUrl,
+    sourceMediaType: params.sourceMediaType,
+    requestedQuery: params.requestedQuery,
+    sourceResolved: params.sourceResolved,
+  };
+
   // Erster Call
   let { input } = await callClaude(userMessage);
-  let merged = withMeta(input, params.sourceUrl, params.sourceMediaType);
+  let merged = withMeta(input, meta);
   let parsed = CashflowResult.safeParse(merged);
 
   // Ein Retry bei Schema-Fail
@@ -174,7 +183,7 @@ export async function analyzeCashflow(params: {
         "Schema-Validierung fehlgeschlagen, Retry-Call konnte nicht ausgeführt werden.",
       );
     }
-    merged = withMeta(input, params.sourceUrl, params.sourceMediaType);
+    merged = withMeta(input, meta);
     parsed = CashflowResult.safeParse(merged);
     if (!parsed.success) {
       throw new LlmInvalidOutputError(
@@ -203,14 +212,20 @@ export async function analyzeCashflow(params: {
 
 function withMeta(
   rawInput: unknown,
-  sourceUrl: string,
-  sourceMediaType: SourceMediaType,
+  meta: {
+    sourceUrl: string;
+    sourceMediaType: SourceMediaType;
+    requestedQuery: string;
+    sourceResolved: boolean;
+  },
 ): unknown {
   if (typeof rawInput !== "object" || rawInput === null) return rawInput;
   return {
     ...rawInput,
-    sourceUrl,
-    sourceMediaType,
+    sourceUrl: meta.sourceUrl,
+    sourceMediaType: meta.sourceMediaType,
+    requestedQuery: meta.requestedQuery,
+    sourceResolved: meta.sourceResolved,
     analyzedAt: new Date().toISOString(),
   };
 }

@@ -15,6 +15,7 @@ describe("schema sanity", () => {
     expect(ApiErrorCode.options).toContain("BLOCKED_TARGET");
     expect(ApiErrorCode.options).toContain("RATE_LIMITED");
     expect(ApiErrorCode.options).toContain("PDF_PARSING_FAILED");
-    expect(ApiErrorCode.options.length).toBe(11);
+    expect(ApiErrorCode.options).toContain("NO_SOURCE_FOUND");
+    expect(ApiErrorCode.options.length).toBe(12);
   });
 });

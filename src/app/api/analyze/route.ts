@@ -11,6 +11,7 @@ import { extractTextFromPdf } from "@/lib/extractTextPdf";
 import { fetchPage } from "@/lib/fetchPage";
 import { getClientIp } from "@/lib/getClientIp";
 import { checkRateLimit } from "@/lib/rateLimit";
+import { resolveSource } from "@/lib/resolveSource";
 import { AnalyzeRequest, type CashflowResult } from "@/lib/schema";
 import { sha256 } from "@/lib/sha256";
 
@@ -19,6 +20,7 @@ export const maxDuration = 30;
 export const dynamic = "force-dynamic";
 
 const CACHE_TTL_SECONDS = 30 * 60;
+const URL_RE = /^https?:\/\//i;
 
 export async function POST(req: Request): Promise<Response> {
   try {
@@ -28,10 +30,10 @@ export async function POST(req: Request): Promise<Response> {
     const parsed = AnalyzeRequest.safeParse(raw);
     if (!parsed.success) {
       throw new InvalidUrlError(
-        parsed.error.issues[0]?.message ?? "Ungültige URL.",
+        parsed.error.issues[0]?.message ?? "Ungültige Eingabe.",
       );
     }
-    const { url } = parsed.data;
+    const { query } = parsed.data;
 
     const limited = await checkRateLimit(ip);
     if (limited.blocked) {
@@ -40,13 +42,29 @@ export async function POST(req: Request): Promise<Response> {
       );
     }
 
-    const cacheKey = `cf:${sha256(url)}`;
-    const cached = await cacheGet<CashflowResult>(cacheKey);
-    if (cached) {
-      return Response.json(cached, { headers: { "x-cache": "hit" } });
+    let sourceUrl: string;
+    let sourceResolved: boolean;
+    if (URL_RE.test(query)) {
+      sourceUrl = query;
+      sourceResolved = false;
+    } else {
+      const resolved = await resolveSource(query);
+      sourceUrl = resolved.url;
+      sourceResolved = true;
     }
 
-    const page = await fetchPage(url);
+    const cacheKey = `cf:${sha256(sourceUrl)}`;
+    const cached = await cacheGet<CashflowResult>(cacheKey);
+    if (cached) {
+      const enriched: CashflowResult = {
+        ...cached,
+        requestedQuery: query,
+        sourceResolved,
+      };
+      return Response.json(enriched, { headers: { "x-cache": "hit" } });
+    }
+
+    const page = await fetchPage(sourceUrl);
     const extracted =
       page.mediaType === "application/pdf"
         ? await extractTextFromPdf(page.bodyBytes)
@@ -61,6 +79,8 @@ export async function POST(req: Request): Promise<Response> {
       text: extracted.text,
       sourceUrl: page.finalUrl,
       sourceMediaType: page.mediaType,
+      requestedQuery: query,
+      sourceResolved,
     });
 
     await cachePut(cacheKey, result, CACHE_TTL_SECONDS);

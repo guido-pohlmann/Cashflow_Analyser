@@ -21,6 +21,8 @@ const VALID_RESULT: CashflowResult = {
   confidence: "high",
   sourceUrl: "https://example.com",
   sourceMediaType: "text/html",
+  requestedQuery: "ACME",
+  sourceResolved: true,
   analyzedAt: "2026-04-26T10:00:00.000Z",
   warnings: [],
 };
@@ -54,25 +56,15 @@ describe("UrlAnalyzerCard", () => {
     render(<UrlAnalyzerCard />);
     await user.click(screen.getByRole("button", { name: /analysieren/i }));
     const alert = await screen.findByRole("alert");
-    expect(alert).toHaveTextContent(/url/i);
+    expect(alert).toHaveTextContent(/firmenname/i);
   });
 
-  it("rejects non-http(s) protocols client-side", async () => {
-    const user = userEvent.setup();
-    render(<UrlAnalyzerCard />);
-    const input = screen.getByLabelText(/unternehmens-url/i);
-    await user.type(input, "javascript:alert(1)");
-    await user.click(screen.getByRole("button", { name: /analysieren/i }));
-    const alert = await screen.findByRole("alert");
-    expect(alert).toHaveTextContent(/http\(s\)/i);
-  });
-
-  it("transitions idle → loading → success on valid URL", async () => {
+  it("transitions idle → loading → success on company-name query", async () => {
     const fetchMock = mockFetchOk(VALID_RESULT);
     const user = userEvent.setup();
     render(<UrlAnalyzerCard />);
-    const input = screen.getByLabelText(/unternehmens-url/i);
-    await user.type(input, "https://example.com/q4");
+    const input = screen.getByLabelText(/firmenname/i);
+    await user.type(input, "ACME");
     await user.click(screen.getByRole("button", { name: /analysieren/i }));
 
     expect(
@@ -82,27 +74,44 @@ describe("UrlAnalyzerCard", () => {
       "/api/analyze",
       expect.objectContaining({ method: "POST" }),
     );
+    const callArgs = fetchMock.mock.calls[0]?.[1] as { body: string };
+    expect(JSON.parse(callArgs.body)).toEqual({ query: "ACME" });
   });
 
-  it("renders ErrorMessage with mapped copy on API error", async () => {
-    mockFetchError(502, "FETCH_FAILED");
+  it("transitions idle → loading → success on URL query", async () => {
+    mockFetchOk({ ...VALID_RESULT, sourceResolved: false });
     const user = userEvent.setup();
     render(<UrlAnalyzerCard />);
     await user.type(
-      screen.getByLabelText(/unternehmens-url/i),
-      "https://example.com/x",
+      screen.getByLabelText(/firmenname/i),
+      "https://example.com/q4",
+    );
+    await user.click(screen.getByRole("button", { name: /analysieren/i }));
+
+    expect(
+      await screen.findByText("Operativer Cashflow", {}, { timeout: 3000 }),
+    ).toBeInTheDocument();
+  });
+
+  it("renders ErrorMessage with mapped copy on API error", async () => {
+    mockFetchError(422, "NO_SOURCE_FOUND");
+    const user = userEvent.setup();
+    render(<UrlAnalyzerCard />);
+    await user.type(
+      screen.getByLabelText(/firmenname/i),
+      "asdf zzz",
     );
     await user.click(screen.getByRole("button", { name: /analysieren/i }));
 
     const alert = await screen.findByRole("alert", {}, { timeout: 3000 });
-    expect(alert).toHaveTextContent(/seite konnte nicht geladen werden/i);
-    expect(alert).toHaveAttribute("data-error-code", "FETCH_FAILED");
+    expect(alert).toHaveTextContent(/keine cashflow-quelle gefunden/i);
+    expect(alert).toHaveAttribute("data-error-code", "NO_SOURCE_FOUND");
   });
 
   it("input has aria-invalid when there is an inline error", async () => {
     const user = userEvent.setup();
     render(<UrlAnalyzerCard />);
-    const input = screen.getByLabelText(/unternehmens-url/i);
+    const input = screen.getByLabelText(/firmenname/i);
     expect(input).toHaveAttribute("aria-invalid", "false");
     await user.click(screen.getByRole("button", { name: /analysieren/i }));
     expect(await screen.findByRole("alert")).toBeInTheDocument();

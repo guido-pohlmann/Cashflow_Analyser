@@ -70,15 +70,25 @@ export function ResultCard({ data, onReset }: ResultCardProps) {
 
       <footer className="mt-6 flex flex-col gap-3 border-t border-accent-deep/20 pt-4 text-xs text-fg-muted sm:flex-row sm:items-center sm:justify-between">
         <div className="flex flex-col gap-1">
-          <a
-            href={data.sourceUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            aria-label={`Quell-URL ${data.sourceUrl} (öffnet in neuem Tab)`}
-            className="break-all text-accent hover:text-accent-deep"
-          >
-            {data.sourceUrl}
-          </a>
+          <div className="flex flex-wrap items-center gap-2">
+            <a
+              href={data.sourceUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              aria-label={`Quell-URL ${data.sourceUrl} (öffnet in neuem Tab)`}
+              className="break-all text-accent hover:text-accent-deep"
+            >
+              {data.sourceUrl}
+            </a>
+            {data.sourceResolved && (
+              <span
+                data-testid="source-resolved-badge"
+                className="rounded-full border border-accent-deep/40 px-2 py-0.5 text-[10px] uppercase tracking-wide text-accent"
+              >
+                automatisch ermittelt
+              </span>
+            )}
+          </div>
           <span>
             Analysiert am {formatAnalyzedAt(data.analyzedAt)} · Confidence:{" "}
             {data.confidence}
@@ -89,7 +99,7 @@ export function ResultCard({ data, onReset }: ResultCardProps) {
           onClick={onReset}
           className="rounded-lg border border-accent-deep/40 px-4 py-2 text-sm font-medium text-fg transition-colors hover:border-accent hover:text-accent"
         >
-          Neue URL analysieren
+          Neue Analyse
         </button>
       </footer>
 

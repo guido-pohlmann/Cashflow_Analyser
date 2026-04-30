@@ -21,6 +21,8 @@ const SAMPLE: CashflowResult = {
   confidence: "high",
   sourceUrl: "https://example.com",
   sourceMediaType: "text/html",
+  requestedQuery: "https://example.com",
+  sourceResolved: false,
   analyzedAt: "2026-04-25T12:00:00.000Z",
   warnings: [],
 };
@@ -54,9 +56,7 @@ describe("ResultCard", () => {
     const user = userEvent.setup();
     const onReset = vi.fn();
     render(<ResultCard data={SAMPLE} onReset={onReset} />);
-    await user.click(
-      screen.getByRole("button", { name: /neue url analysieren/i }),
-    );
+    await user.click(screen.getByRole("button", { name: /neue analyse/i }));
     expect(onReset).toHaveBeenCalledOnce();
   });
 
@@ -79,5 +79,18 @@ describe("ResultCard", () => {
     };
     render(<ResultCard data={withWarnings} onReset={() => {}} />);
     expect(screen.getByText(/pressemitteilung/i)).toBeInTheDocument();
+  });
+
+  it("hides source-resolved badge when sourceResolved is false", () => {
+    render(<ResultCard data={SAMPLE} onReset={() => {}} />);
+    expect(
+      screen.queryByTestId("source-resolved-badge"),
+    ).not.toBeInTheDocument();
+  });
+
+  it("shows source-resolved badge when sourceResolved is true", () => {
+    const resolved: CashflowResult = { ...SAMPLE, sourceResolved: true };
+    render(<ResultCard data={resolved} onReset={() => {}} />);
+    expect(screen.getByTestId("source-resolved-badge")).toBeInTheDocument();
   });
 });

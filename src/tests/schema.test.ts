@@ -25,6 +25,8 @@ const validResult = {
   confidence: "high",
   sourceUrl: "https://investor.example.com/q4",
   sourceMediaType: "text/html",
+  requestedQuery: "ACME",
+  sourceResolved: true,
   analyzedAt: "2026-04-25T12:00:00.000Z",
   warnings: [],
 } as const;
@@ -138,22 +140,32 @@ describe("Verdict / Confidence enums", () => {
 });
 
 describe("AnalyzeRequest", () => {
-  it("accepts a valid https URL", () => {
+  it("accepts a company name", () => {
+    expect(AnalyzeRequest.safeParse({ query: "BYD" }).success).toBe(true);
+  });
+
+  it("accepts a ticker symbol", () => {
+    expect(AnalyzeRequest.safeParse({ query: "1211.HK" }).success).toBe(true);
+  });
+
+  it("accepts a full https URL", () => {
     expect(
-      AnalyzeRequest.safeParse({ url: "https://example.com/page" }).success,
+      AnalyzeRequest.safeParse({ query: "https://example.com/page" }).success,
     ).toBe(true);
   });
 
-  it("rejects non-URL strings", () => {
-    expect(AnalyzeRequest.safeParse({ url: "not a url" }).success).toBe(false);
+  it("rejects strings shorter than 2 chars after trim", () => {
+    expect(AnalyzeRequest.safeParse({ query: " " }).success).toBe(false);
+    expect(AnalyzeRequest.safeParse({ query: "x" }).success).toBe(false);
   });
 
-  it("rejects URLs longer than 2048 chars", () => {
-    const longUrl = "https://example.com/" + "a".repeat(2050);
-    expect(AnalyzeRequest.safeParse({ url: longUrl }).success).toBe(false);
+  it("rejects strings longer than 200 chars", () => {
+    expect(
+      AnalyzeRequest.safeParse({ query: "a".repeat(201) }).success,
+    ).toBe(false);
   });
 
-  it("rejects missing url field", () => {
+  it("rejects missing query field", () => {
     expect(AnalyzeRequest.safeParse({}).success).toBe(false);
   });
 });
@@ -170,6 +182,7 @@ describe("ApiErrorCode", () => {
     "LLM_INVALID_OUTPUT",
     "RATE_LIMITED",
     "PDF_PARSING_FAILED",
+    "NO_SOURCE_FOUND",
     "INTERNAL",
   ] as const)("accepts %s", (code) => {
     expect(ApiErrorCode.safeParse(code).success).toBe(true);

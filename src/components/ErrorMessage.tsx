@@ -16,6 +16,8 @@ const COPY: Record<ApiErrorCode, string> = {
   RATE_LIMITED: "Zu viele Anfragen. Bitte in einer Stunde erneut versuchen.",
   PDF_PARSING_FAILED:
     "Das PDF konnte nicht ausgewertet werden (beschädigt oder enthält nur Bilder). Versuche eine HTML-Quelle oder ein anderes PDF.",
+  NO_SOURCE_FOUND:
+    "Zu dieser Eingabe wurde keine Cashflow-Quelle gefunden. Versuche einen präziseren Firmennamen, ein Tickersymbol oder eine direkte URL.",
   INTERNAL: "Unerwarteter Fehler. Bitte erneut versuchen.",
 };
 

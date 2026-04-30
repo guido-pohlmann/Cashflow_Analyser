@@ -79,6 +79,13 @@ export class PdfParsingFailedError extends CashflowError {
   }
 }
 
+export class NoSourceFoundError extends CashflowError {
+  constructor(message = "No source URL could be resolved for the query") {
+    super("NO_SOURCE_FOUND", message);
+    this.name = "NoSourceFoundError";
+  }
+}
+
 const HTTP_STATUS: Record<ApiErrorCode, number> = {
   INVALID_URL: 400,
   BLOCKED_TARGET: 400,
@@ -90,6 +97,7 @@ const HTTP_STATUS: Record<ApiErrorCode, number> = {
   LLM_INVALID_OUTPUT: 502,
   RATE_LIMITED: 429,
   PDF_PARSING_FAILED: 422,
+  NO_SOURCE_FOUND: 422,
   INTERNAL: 500,
 };
 
