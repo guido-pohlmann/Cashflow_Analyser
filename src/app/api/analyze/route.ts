@@ -23,6 +23,10 @@ const CACHE_TTL_SECONDS = 30 * 60;
 const URL_RE = /^https?:\/\//i;
 
 export async function POST(req: Request): Promise<Response> {
+  let requestedQuery: string | null = null;
+  let attemptedUrl: string | null = null;
+  let sourceResolved = false;
+
   try {
     const ip = getClientIp(req);
 
@@ -34,6 +38,7 @@ export async function POST(req: Request): Promise<Response> {
       );
     }
     const { query } = parsed.data;
+    requestedQuery = query;
 
     const limited = await checkRateLimit(ip);
     if (limited.blocked) {
@@ -42,18 +47,16 @@ export async function POST(req: Request): Promise<Response> {
       );
     }
 
-    let sourceUrl: string;
-    let sourceResolved: boolean;
     if (URL_RE.test(query)) {
-      sourceUrl = query;
+      attemptedUrl = query;
       sourceResolved = false;
     } else {
       const resolved = await resolveSource(query);
-      sourceUrl = resolved.url;
+      attemptedUrl = resolved.url;
       sourceResolved = true;
     }
 
-    const cacheKey = `cf:${sha256(sourceUrl)}`;
+    const cacheKey = `cf:${sha256(attemptedUrl)}`;
     const cached = await cacheGet<CashflowResult>(cacheKey);
     if (cached) {
       const enriched: CashflowResult = {
@@ -64,7 +67,8 @@ export async function POST(req: Request): Promise<Response> {
       return Response.json(enriched, { headers: { "x-cache": "hit" } });
     }
 
-    const page = await fetchPage(sourceUrl);
+    const page = await fetchPage(attemptedUrl);
+    attemptedUrl = page.finalUrl;
     const extracted =
       page.mediaType === "application/pdf"
         ? await extractTextFromPdf(page.bodyBytes)
@@ -87,6 +91,6 @@ export async function POST(req: Request): Promise<Response> {
 
     return Response.json(result, { headers: { "x-cache": "miss" } });
   } catch (error) {
-    return mapError(error);
+    return mapError(error, { requestedQuery, attemptedUrl, sourceResolved });
   }
 }

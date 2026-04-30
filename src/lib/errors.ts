@@ -101,20 +101,35 @@ const HTTP_STATUS: Record<ApiErrorCode, number> = {
   INTERNAL: 500,
 };
 
-export function mapError(error: unknown): Response {
+export interface ErrorContext {
+  requestedQuery?: string | null;
+  attemptedUrl?: string | null;
+  sourceResolved?: boolean;
+}
+
+function buildErrorEnvelope(
+  code: ApiErrorCode,
+  message: string,
+  context?: ErrorContext,
+): Record<string, unknown> {
+  const error: Record<string, unknown> = { code, message };
+  if (context?.attemptedUrl) error.attemptedUrl = context.attemptedUrl;
+  if (context?.requestedQuery) error.requestedQuery = context.requestedQuery;
+  if (typeof context?.sourceResolved === "boolean") {
+    error.sourceResolved = context.sourceResolved;
+  }
+  return { error };
+}
+
+export function mapError(error: unknown, context?: ErrorContext): Response {
   if (error instanceof CashflowError) {
     return Response.json(
-      { error: { code: error.code, message: error.message } },
+      buildErrorEnvelope(error.code, error.message, context),
       { status: HTTP_STATUS[error.code] },
     );
   }
   return Response.json(
-    {
-      error: {
-        code: "INTERNAL" satisfies ApiErrorCode,
-        message: "Unerwarteter Fehler.",
-      },
-    },
+    buildErrorEnvelope("INTERNAL", "Unerwarteter Fehler.", context),
     { status: 500 },
   );
 }

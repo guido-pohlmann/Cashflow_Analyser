@@ -8,16 +8,28 @@ import { ResultCard } from "./ResultCard";
 
 type LoadingPhase = "url" | "search-and-analyze";
 
+interface ErrorContext {
+  attemptedUrl?: string | null;
+  requestedQuery?: string | null;
+  sourceResolved?: boolean;
+}
+
 type Status =
   | { kind: "idle" }
   | { kind: "loading"; phase: LoadingPhase }
   | { kind: "success"; data: CashflowResult }
-  | { kind: "error"; code: ApiErrorCode };
+  | ({ kind: "error"; code: ApiErrorCode } & ErrorContext);
 
 const CLIENT_TIMEOUT_MS = 60_000;
 
 interface ApiErrorBody {
-  error?: { code?: ApiErrorCode; message?: string };
+  error?: {
+    code?: ApiErrorCode;
+    message?: string;
+    attemptedUrl?: string | null;
+    requestedQuery?: string | null;
+    sourceResolved?: boolean;
+  };
 }
 
 const URL_RE = /^https?:\/\//i;
@@ -73,14 +85,28 @@ export function UrlAnalyzerCard() {
 
       const body = (await response.json().catch(() => null)) as ApiErrorBody | null;
       const code: ApiErrorCode = body?.error?.code ?? "INTERNAL";
-      setStatus({ kind: "error", code });
+      setStatus({
+        kind: "error",
+        code,
+        attemptedUrl: body?.error?.attemptedUrl ?? null,
+        requestedQuery: body?.error?.requestedQuery ?? submittedQuery,
+        sourceResolved: body?.error?.sourceResolved ?? undefined,
+      });
     } catch (e: unknown) {
       clearTimeout(timer);
       if (e instanceof DOMException && e.name === "AbortError") {
-        setStatus({ kind: "error", code: "FETCH_TIMEOUT" });
+        setStatus({
+          kind: "error",
+          code: "FETCH_TIMEOUT",
+          requestedQuery: submittedQuery,
+        });
         return;
       }
-      setStatus({ kind: "error", code: "INTERNAL" });
+      setStatus({
+        kind: "error",
+        code: "INTERNAL",
+        requestedQuery: submittedQuery,
+      });
     }
   }
 
@@ -118,6 +144,9 @@ export function UrlAnalyzerCard() {
       <div aria-live="polite">
         <ErrorMessage
           code={status.code}
+          attemptedUrl={status.attemptedUrl}
+          requestedQuery={status.requestedQuery}
+          sourceResolved={status.sourceResolved}
           onRetry={handleRetry}
           onReset={reset}
         />

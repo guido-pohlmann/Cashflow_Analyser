@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   AnalyzeRequest,
+  ApiError,
   ApiErrorCode,
   CashflowFigures,
   CashflowResult,
@@ -190,6 +191,40 @@ describe("ApiErrorCode", () => {
 
   it("rejects unknown code", () => {
     expect(ApiErrorCode.safeParse("UNKNOWN").success).toBe(false);
+  });
+});
+
+describe("ApiError", () => {
+  it("accepts a minimal envelope without context fields", () => {
+    expect(
+      ApiError.safeParse({ error: { code: "FETCH_FAILED", message: "x" } })
+        .success,
+    ).toBe(true);
+  });
+
+  it("accepts a full envelope with attemptedUrl + requestedQuery + sourceResolved", () => {
+    const out = ApiError.safeParse({
+      error: {
+        code: "FETCH_FAILED",
+        message: "x",
+        attemptedUrl: "https://example.com/q4.pdf",
+        requestedQuery: "BYD",
+        sourceResolved: true,
+      },
+    });
+    expect(out.success).toBe(true);
+  });
+
+  it("rejects malformed attemptedUrl", () => {
+    expect(
+      ApiError.safeParse({
+        error: {
+          code: "FETCH_FAILED",
+          message: "x",
+          attemptedUrl: "not-a-url",
+        },
+      }).success,
+    ).toBe(false);
   });
 });
 

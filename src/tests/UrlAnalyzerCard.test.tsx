@@ -36,11 +36,15 @@ function mockFetchOk(data: unknown) {
   return fn;
 }
 
-function mockFetchError(status: number, code: string) {
+function mockFetchError(
+  status: number,
+  code: string,
+  extras: Record<string, unknown> = {},
+) {
   const fn = vi.fn().mockResolvedValue({
     ok: false,
     status,
-    json: async () => ({ error: { code, message: "x" } }),
+    json: async () => ({ error: { code, message: "x", ...extras } }),
   });
   vi.stubGlobal("fetch", fn);
   return fn;
@@ -106,6 +110,38 @@ describe("UrlAnalyzerCard", () => {
     const alert = await screen.findByRole("alert", {}, { timeout: 3000 });
     expect(alert).toHaveTextContent(/keine cashflow-quelle gefunden/i);
     expect(alert).toHaveAttribute("data-error-code", "NO_SOURCE_FOUND");
+  });
+
+  it("renders attempted URL link + badge on FETCH_FAILED with resolved source", async () => {
+    mockFetchError(502, "FETCH_FAILED", {
+      attemptedUrl: "https://example.com/q4.pdf",
+      requestedQuery: "ACME",
+      sourceResolved: true,
+    });
+    const user = userEvent.setup();
+    render(<UrlAnalyzerCard />);
+    await user.type(screen.getByLabelText(/firmenname/i), "ACME");
+    await user.click(screen.getByRole("button", { name: /analysieren/i }));
+
+    const link = await screen.findByTestId("attempted-url");
+    expect(link).toHaveAttribute("href", "https://example.com/q4.pdf");
+    expect(link).toHaveAttribute("target", "_blank");
+    expect(screen.getByTestId("source-resolved-badge")).toBeInTheDocument();
+  });
+
+  it("renders requestedQuery line on NO_SOURCE_FOUND (no URL)", async () => {
+    mockFetchError(422, "NO_SOURCE_FOUND", {
+      requestedQuery: "asdf zzz",
+    });
+    const user = userEvent.setup();
+    render(<UrlAnalyzerCard />);
+    await user.type(screen.getByLabelText(/firmenname/i), "asdf zzz");
+    await user.click(screen.getByRole("button", { name: /analysieren/i }));
+
+    expect(await screen.findByTestId("error-query")).toHaveTextContent(
+      "asdf zzz",
+    );
+    expect(screen.queryByTestId("attempted-url")).not.toBeInTheDocument();
   });
 
   it("input has aria-invalid when there is an inline error", async () => {

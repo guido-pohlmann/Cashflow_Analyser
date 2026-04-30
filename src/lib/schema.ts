@@ -71,6 +71,9 @@ export const ApiError = z.object({
   error: z.object({
     code: ApiErrorCode,
     message: z.string(),
+    attemptedUrl: z.url().nullish(),
+    requestedQuery: z.string().nullish(),
+    sourceResolved: z.boolean().nullish(),
   }),
 });
 export type ApiError = z.infer<typeof ApiError>;

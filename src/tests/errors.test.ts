@@ -57,6 +57,51 @@ describe("mapError", () => {
     const body = (await res.json()) as { error: { code: string } };
     expect(body.error.code).toBe("INTERNAL");
   });
+
+  it("merges error context fields when provided", async () => {
+    const res = mapError(new FetchFailedError("502"), {
+      attemptedUrl: "https://example.com/q4.pdf",
+      requestedQuery: "BYD",
+      sourceResolved: true,
+    });
+    const body = (await res.json()) as {
+      error: {
+        code: string;
+        attemptedUrl?: string;
+        requestedQuery?: string;
+        sourceResolved?: boolean;
+      };
+    };
+    expect(body.error.attemptedUrl).toBe("https://example.com/q4.pdf");
+    expect(body.error.requestedQuery).toBe("BYD");
+    expect(body.error.sourceResolved).toBe(true);
+  });
+
+  it("omits empty context fields", async () => {
+    const res = mapError(new FetchFailedError("502"), {
+      attemptedUrl: null,
+      requestedQuery: null,
+    });
+    const body = (await res.json()) as {
+      error: Record<string, unknown>;
+    };
+    expect(body.error).not.toHaveProperty("attemptedUrl");
+    expect(body.error).not.toHaveProperty("requestedQuery");
+    expect(body.error).not.toHaveProperty("sourceResolved");
+  });
+
+  it("merges context on the catch-all (non-CashflowError) branch", async () => {
+    const res = mapError(new Error("boom"), {
+      attemptedUrl: "https://example.com/x",
+      sourceResolved: false,
+    });
+    const body = (await res.json()) as {
+      error: { code: string; attemptedUrl?: string; sourceResolved?: boolean };
+    };
+    expect(body.error.code).toBe("INTERNAL");
+    expect(body.error.attemptedUrl).toBe("https://example.com/x");
+    expect(body.error.sourceResolved).toBe(false);
+  });
 });
 
 describe("CashflowError subclasses set name + code", () => {

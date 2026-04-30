@@ -31,11 +31,21 @@ const RETRIABLE: ReadonlySet<ApiErrorCode> = new Set<ApiErrorCode>([
 
 interface ErrorMessageProps {
   code: ApiErrorCode;
+  attemptedUrl?: string | null;
+  requestedQuery?: string | null;
+  sourceResolved?: boolean;
   onRetry: () => void;
   onReset: () => void;
 }
 
-export function ErrorMessage({ code, onRetry, onReset }: ErrorMessageProps) {
+export function ErrorMessage({
+  code,
+  attemptedUrl,
+  requestedQuery,
+  sourceResolved,
+  onRetry,
+  onReset,
+}: ErrorMessageProps) {
   return (
     <div
       role="alert"
@@ -43,6 +53,47 @@ export function ErrorMessage({ code, onRetry, onReset }: ErrorMessageProps) {
       className="w-full max-w-xl rounded-2xl border border-verdict-negative/40 bg-verdict-negative/10 p-6 backdrop-blur-xl"
     >
       <p className="text-base text-fg">{COPY[code]}</p>
+
+      {attemptedUrl ? (
+        <div className="mt-4 rounded-lg border border-fg-muted/20 bg-bg-deep/40 p-3 text-xs text-fg-muted">
+          <div className="mb-1 flex flex-wrap items-center gap-2">
+            <span>Versuchte Quelle:</span>
+            {sourceResolved && (
+              <span
+                data-testid="source-resolved-badge"
+                className="rounded-full border border-accent-deep/40 px-2 py-0.5 text-[10px] uppercase tracking-wide text-accent"
+              >
+                automatisch ermittelt
+              </span>
+            )}
+          </div>
+          <a
+            data-testid="attempted-url"
+            href={attemptedUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            aria-label={`Versuchte Quell-URL ${attemptedUrl} (öffnet in neuem Tab)`}
+            className="break-all text-accent hover:text-accent-deep"
+          >
+            {attemptedUrl}
+          </a>
+          {requestedQuery && requestedQuery !== attemptedUrl && (
+            <p className="mt-1">
+              Suchanfrage: <span className="text-fg">{requestedQuery}</span>
+            </p>
+          )}
+        </div>
+      ) : (
+        requestedQuery && (
+          <p className="mt-3 text-xs text-fg-muted">
+            Suchanfrage:{" "}
+            <span className="text-fg" data-testid="error-query">
+              {requestedQuery}
+            </span>
+          </p>
+        )
+      )}
+
       <div className="mt-4 flex flex-wrap gap-3">
         {RETRIABLE.has(code) && (
           <button
@@ -58,7 +109,7 @@ export function ErrorMessage({ code, onRetry, onReset }: ErrorMessageProps) {
           onClick={onReset}
           className="rounded-lg border border-fg-muted/40 px-4 py-2 text-sm font-medium text-fg hover:border-accent"
         >
-          Neue URL
+          Neue Analyse
         </button>
       </div>
     </div>
