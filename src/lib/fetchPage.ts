@@ -20,7 +20,7 @@ export type FetchedPage =
     };
 
 const DEFAULT_TIMEOUT_MS = 15_000;
-const MAX_BYTES_HTML = 2_000_000;
+const MAX_BYTES_HTML = 5_000_000;
 const MAX_BYTES_PDF = 10_000_000;
 const MAX_REDIRECTS = 5;
 // SEC EDGAR fair-access policy verlangt eine identifizierbare User-Agent

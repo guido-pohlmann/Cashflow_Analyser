@@ -44,7 +44,7 @@ describe("fetchPage", () => {
   });
 
   it("rejects bodies above maxBytes cap", async () => {
-    const big = new Uint8Array(3 * 1024 * 1024);
+    const big = new Uint8Array(6 * 1024 * 1024);
     const stream = new ReadableStream<Uint8Array>({
       start(c) {
         c.enqueue(big);
