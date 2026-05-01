@@ -23,8 +23,11 @@ const DEFAULT_TIMEOUT_MS = 15_000;
 const MAX_BYTES_HTML = 2_000_000;
 const MAX_BYTES_PDF = 10_000_000;
 const MAX_REDIRECTS = 5;
+// SEC EDGAR fair-access policy verlangt eine identifizierbare User-Agent
+// (Format: "Name Email"). Diese UA erfüllt das und wird auf den meisten
+// öffentlichen Quellen (HKEXnews, IR-PDFs) ebenfalls akzeptiert.
 const USER_AGENT =
-  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36";
+  "CashflowAnalyzer/1.0 (+https://cashflow-analyser.vercel.app; guido.pohlmann@googlemail.com)";
 
 const HTML_CONTENT_TYPE_RE = /^(text\/html|application\/xhtml\+xml)/i;
 const PDF_CONTENT_TYPE_RE = /^application\/pdf\b/i;

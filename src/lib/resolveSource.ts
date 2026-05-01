@@ -10,7 +10,7 @@ export interface ResolvedSource {
 }
 
 const REPORT_SOURCE_TOOL = "report_source";
-const CACHE_PREFIX = "src:v2:";
+const CACHE_PREFIX = "src:v3:";
 const CACHE_TTL_SECONDS = 24 * 60 * 60;
 
 const REPORT_SOURCE_SCHEMA = {
@@ -46,9 +46,10 @@ Vorgehen:
 
 2. Quellenwahl nach **strenger Priorität**:
    a. **Regulatoren** (höchste Priorität, programmatisch zugänglich):
-      - **US-Listing** → SEC EDGAR (sec.gov / efts.sec.gov):
+      - **US-Listing** → SEC EDGAR — **ausschließlich direkte Filing-URLs**:
+        * Erlaubt: \`https://www.sec.gov/Archives/edgar/data/<CIK>/<accession>/<filename>.htm\` (HTML-Form) oder das primäre Document der Accession.
+        * **Strikt verboten** als Quelle (servieren keine Filing-Daten und/oder werden mit 403 geblockt): \`/cgi-bin/browse-edgar\`, \`efts.sec.gov\`, \`/edgar/search/\`, beliebige Index-, Search- oder Browse-Endpunkte. Wenn die Web-Suche nur einen Index-Link liefert, suche gezielt das eigentliche Filing-Dokument (z.B. die \`*-index.htm\`-Seite oder direkt das Primary Document).
         * 10-Q für Quartalsbericht, 10-K für Jahresbericht, **8-K mit Exhibit 99.1** ist das regulatorische Äquivalent zur Press-Release.
-        * Bevorzugt direkt das HTML/PDF des Filings (z.B. \`sec.gov/Archives/edgar/data/<CIK>/...\`) statt der Filing-Index-Seite, sofern eindeutig.
       - **HK-Listing** → HKEXnews (www.hkexnews.hk / www1.hkexnews.hk): Quarterly Report, Interim Report, Announcement-PDF.
       - **DE-Listing** → Bundesanzeiger.
    b. Offizielle Investor-Relations-Seite (nur wenn kein passender Regulator-Filing existiert oder das Unternehmen nicht reguliert ist).
