@@ -108,21 +108,21 @@ export async function resolveSource(query: string): Promise<ResolvedSource> {
         {
           type: "text",
           text: SYSTEM_PROMPT,
-          cache_control: { type: "ephemeral" },
+          cache_control: { type: "ephemeral", ttl: "1h" },
         },
       ],
       tools: [
         {
           type: "web_search_20250305",
           name: "web_search",
-          max_uses: 5,
+          max_uses: 3,
         },
         {
           name: REPORT_SOURCE_TOOL,
           description:
             "Meldet die ermittelte Quell-URL für die Cashflow-Analyse zurück.",
           input_schema: REPORT_SOURCE_SCHEMA,
-          cache_control: { type: "ephemeral" },
+          cache_control: { type: "ephemeral", ttl: "1h" },
         },
       ],
       messages: [{ role: "user", content: query }],

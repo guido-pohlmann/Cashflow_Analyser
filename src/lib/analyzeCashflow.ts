@@ -117,7 +117,7 @@ async function callClaude(userText: string): Promise<CallResult> {
         {
           type: "text",
           text: SYSTEM_PROMPT,
-          cache_control: { type: "ephemeral" },
+          cache_control: { type: "ephemeral", ttl: "1h" },
         },
       ],
       tools: [
@@ -125,7 +125,7 @@ async function callClaude(userText: string): Promise<CallResult> {
           name: TOOL_NAME,
           description:
             "Gibt eine strukturierte Cashflow-Analyse der letzten Periode zurück.",
-          cache_control: { type: "ephemeral" },
+          cache_control: { type: "ephemeral", ttl: "1h" },
           input_schema: TOOL_INPUT_SCHEMA,
         },
       ],
