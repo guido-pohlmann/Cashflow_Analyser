@@ -1,4 +1,4 @@
-import { DEFAULT_MODEL, getAnthropicClient } from "./anthropicClient";
+import { RESOLVER_MODEL, getAnthropicClient } from "./anthropicClient";
 import { cacheGet, cachePut } from "./cache";
 import { NoSourceFoundError } from "./errors";
 import { sha256 } from "./sha256";
@@ -102,7 +102,7 @@ export async function resolveSource(query: string): Promise<ResolvedSource> {
   let response: AnthropicResponse;
   try {
     response = (await client.messages.create({
-      model: DEFAULT_MODEL,
+      model: RESOLVER_MODEL,
       max_tokens: 1024,
       system: [
         {

@@ -14,3 +14,6 @@ export function getAnthropicClient(): Anthropic {
 
 export const DEFAULT_MODEL: string =
   process.env.ANTHROPIC_MODEL ?? "claude-sonnet-4-6";
+
+export const RESOLVER_MODEL: string =
+  process.env.ANTHROPIC_RESOLVER_MODEL ?? "claude-haiku-4-5-20251001";
