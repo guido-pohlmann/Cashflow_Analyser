@@ -1,7 +1,11 @@
 import { RESOLVER_MODEL, getAnthropicClient } from "./anthropicClient";
+import { cacheGet, cachePut } from "./cache";
 import { KgvResult } from "./schema";
+import { sha256 } from "./sha256";
 
 const TOOL_NAME = "report_kgv";
+const CACHE_PREFIX = "kgv:v1:";
+const CACHE_TTL_SECONDS = 24 * 60 * 60;
 
 const TOOL_SCHEMA = {
   type: "object" as const,
@@ -62,7 +66,16 @@ interface AnthropicBlock {
   input?: unknown;
 }
 
+function normalizeIdentifier(id: string): string {
+  return id.trim().toLowerCase().replace(/\s+/g, " ");
+}
+
 export async function fetchKgv(identifier: string): Promise<KgvResult | null> {
+  const cacheKey = `${CACHE_PREFIX}${sha256(normalizeIdentifier(identifier))}`;
+
+  const cached = await cacheGet<KgvResult>(cacheKey);
+  if (cached) return cached;
+
   try {
     const client = getAnthropicClient();
     const response = (await client.messages.create({
@@ -83,8 +96,7 @@ export async function fetchKgv(identifier: string): Promise<KgvResult | null> {
         },
         {
           name: TOOL_NAME,
-          description:
-            "Gibt Aktienkurs und KGV des Unternehmens zurück.",
+          description: "Gibt Aktienkurs und KGV des Unternehmens zurück.",
           input_schema: TOOL_SCHEMA,
           cache_control: { type: "ephemeral", ttl: "1h" },
         },
@@ -107,7 +119,10 @@ export async function fetchKgv(identifier: string): Promise<KgvResult | null> {
       ...(toolCall.input as object),
       fetchedAt: new Date().toISOString(),
     });
-    return parsed.success ? parsed.data : null;
+    if (!parsed.success) return null;
+
+    await cachePut(cacheKey, parsed.data, CACHE_TTL_SECONDS);
+    return parsed.data;
   } catch {
     return null;
   }

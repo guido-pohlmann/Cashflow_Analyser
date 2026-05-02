@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { _resetMemoryCache } from "@/lib/cache";
 
 const { mockCreate } = vi.hoisted(() => ({ mockCreate: vi.fn() }));
 
@@ -18,7 +19,10 @@ function kgvResponse(input: object) {
 }
 
 describe("fetchKgv", () => {
-  beforeEach(() => mockCreate.mockReset());
+  beforeEach(() => {
+    mockCreate.mockReset();
+    _resetMemoryCache();
+  });
 
   it("returns KgvResult on valid tool_use", async () => {
     mockCreate.mockResolvedValueOnce(

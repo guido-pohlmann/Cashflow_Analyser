@@ -5,6 +5,7 @@ const { mockCreate } = vi.hoisted(() => ({ mockCreate: vi.fn() }));
 vi.mock("@/lib/anthropicClient", () => ({
   getAnthropicClient: () => ({ messages: { create: mockCreate } }),
   DEFAULT_MODEL: "claude-sonnet-4-6",
+  RESOLVER_MODEL: "claude-haiku-4-5-20251001",
 }));
 
 import { analyzeCashflow } from "@/lib/analyzeCashflow";
