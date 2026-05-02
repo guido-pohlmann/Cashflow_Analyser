@@ -72,12 +72,15 @@ const TOOL_INPUT_SCHEMA = {
   additionalProperties: false,
 };
 
-const SYSTEM_PROMPT = `Du bist ein erfahrener Finanzanalyst. Deine einzige Aufgabe ist, aus einem übergebenen Textauszug einer Unternehmens-Webseite den Cashflow der letzten berichteten Periode zu identifizieren und knapp zu interpretieren.
+const SYSTEM_PROMPT = `Du bist ein erfahrener Finanzanalyst. Du erhältst eine URL zu einem Finanzdokument (SEC-Filing, HKEXnews-Announcement, Pressemitteilung o.ä.). Deine Aufgabe:
+1. Rufe die URL mit dem web_search-Tool auf, um den Dokumentinhalt zu lesen.
+2. Identifiziere den Cashflow der letzten berichteten Periode aus dem gelesenen Inhalt.
+3. Rufe ausschließlich das Tool \`report_cashflow\` auf. Antworte nicht in Prosa.
 
 Regeln:
-1. Verwende ausschließlich Zahlen, die im Text explizit belegt sind. Rate nicht und ergänze keine Zahlen aus Allgemeinwissen.
-2. "Letzte Periode" = der jüngste im Text ausgewiesene Berichtszeitraum (Quartal, Halbjahr oder Geschäftsjahr — das, was am aktuellsten ist).
-3. Einheit \`unit\` beschreibt die Skalierung der Zahlen im Feld \`figures\`. Wenn im Text "Milliarden USD" steht und operating = 15,2 → gib \`operating: 15.2, unit: "billion", currency: "USD"\` zurück.
+1. Verwende ausschließlich Zahlen, die im Dokument explizit belegt sind. Rate nicht und ergänze keine Zahlen aus Allgemeinwissen.
+2. "Letzte Periode" = der jüngste im Dokument ausgewiesene Berichtszeitraum (Quartal, Halbjahr oder Geschäftsjahr).
+3. Einheit \`unit\` beschreibt die Skalierung der Zahlen im Feld \`figures\`. Wenn im Dokument "Milliarden USD" steht und operating = 15,2 → gib \`operating: 15.2, unit: "billion", currency: "USD"\` zurück.
 4. Free Cashflow: nur angeben, wenn direkt belegt oder trivial ableitbar (Operating - CapEx). Andernfalls null.
 5. \`confidence\`:
    - high: alle drei Haupt-Cashflows explizit ausgewiesen, klare Periode.
@@ -89,13 +92,7 @@ Regeln:
    - neutral: sonst.
 7. \`interpretation\`: 2–5 Sätze, Deutsch, nüchtern, keine Anlageberatung, keine Preisprognose, keine Kauf-/Verkaufsempfehlung.
 8. Bei Unsicherheit füge einen kurzen Eintrag zu \`warnings\` hinzu (z. B. "Quelle ist Pressemitteilung, kein vollständiger Bericht").
-9. Rufe ausschließlich das Tool \`report_cashflow\` auf. Antworte nicht in Prosa.
-
-Wenn der Text keinerlei Cashflow-Daten enthält, rufe das Tool trotzdem auf, setze alle \`figures\` auf null, \`verdict: "neutral"\`, \`confidence: "low"\` und schreibe in \`warnings\` den Grund.`;
-
-interface CallResult {
-  input: unknown;
-}
+9. Wenn das Dokument keinerlei Cashflow-Daten enthält, rufe das Tool trotzdem auf, setze alle \`figures\` auf null, \`verdict: "neutral"\`, \`confidence: "low"\` und schreibe in \`warnings\` den Grund.`;
 
 interface AnthropicMessageBlock {
   type: string;
@@ -106,13 +103,24 @@ interface AnthropicResponse {
   content: AnthropicMessageBlock[];
 }
 
-async function callClaude(userText: string): Promise<CallResult> {
+function guessMediaType(url: string): SourceMediaType {
+  return /\.pdf(\?|#|$)/i.test(url) ? "application/pdf" : "text/html";
+}
+
+async function callClaude(
+  sourceUrl: string,
+  hint?: string,
+): Promise<{ input: unknown }> {
   const client = getAnthropicClient();
+  const userContent = hint
+    ? `${hint}\n\nURL: ${sourceUrl}`
+    : `Bitte diese URL aufrufen und Cashflow-Daten der letzten berichteten Periode per Tool-Call \`report_cashflow\` extrahieren:\n${sourceUrl}`;
+
   let response: AnthropicResponse;
   try {
     response = (await client.messages.create({
       model: DEFAULT_MODEL,
-      max_tokens: 2048,
+      max_tokens: 4096,
       system: [
         {
           type: "text",
@@ -122,6 +130,11 @@ async function callClaude(userText: string): Promise<CallResult> {
       ],
       tools: [
         {
+          type: "web_search_20250305",
+          name: "web_search",
+          max_uses: 1,
+        },
+        {
           name: TOOL_NAME,
           description:
             "Gibt eine strukturierte Cashflow-Analyse der letzten Periode zurück.",
@@ -129,8 +142,8 @@ async function callClaude(userText: string): Promise<CallResult> {
           input_schema: TOOL_INPUT_SCHEMA,
         },
       ],
-      tool_choice: { type: "tool", name: TOOL_NAME },
-      messages: [{ role: "user", content: userText }],
+      tool_choice: { type: "any" },
+      messages: [{ role: "user", content: userContent }],
     })) as unknown as AnthropicResponse;
   } catch (e) {
     throw new LlmFailedError(
@@ -138,45 +151,39 @@ async function callClaude(userText: string): Promise<CallResult> {
     );
   }
 
-  const toolUse = response.content.find((b) => b.type === "tool_use");
+  const toolUse = response.content.find(
+    (b) => b.type === "tool_use" && (b as { name?: string }).name === TOOL_NAME,
+  );
   if (!toolUse || toolUse.input === undefined) {
-    throw new LlmFailedError("Antwort enthält keinen tool_use Block.");
+    throw new LlmFailedError("Antwort enthält keinen report_cashflow-Block.");
   }
   return { input: toolUse.input };
 }
 
 export async function analyzeCashflow(params: {
-  text: string;
   sourceUrl: string;
-  sourceMediaType: SourceMediaType;
   requestedQuery: string;
   sourceResolved: boolean;
 }): Promise<CashflowResult> {
-  const sourceTag =
-    params.sourceMediaType === "application/pdf" ? "PDF" : "HTML";
-  const userMessage = `Quell-URL: ${params.sourceUrl}\nQuelltyp: ${sourceTag}\n\n<text>\n${params.text}\n</text>`;
-
   const meta = {
     sourceUrl: params.sourceUrl,
-    sourceMediaType: params.sourceMediaType,
+    sourceMediaType: guessMediaType(params.sourceUrl),
     requestedQuery: params.requestedQuery,
     sourceResolved: params.sourceResolved,
   };
 
-  // Erster Call
-  let { input } = await callClaude(userMessage);
+  let { input } = await callClaude(params.sourceUrl);
   let merged = withMeta(input, meta);
   let parsed = CashflowResult.safeParse(merged);
 
-  // Ein Retry bei Schema-Fail
   if (!parsed.success) {
     const issues = parsed.error.issues
       .slice(0, 3)
       .map((i) => `${i.path.join(".")}: ${i.message}`)
       .join("; ");
-    const retryMessage = `${userMessage}\n\nDein letzter Output war kein valides Schema: ${issues}. Ruf das Tool erneut auf und korrigiere die Felder.`;
+    const hint = `Vorheriger Versuch hatte Schema-Fehler: ${issues}. Bitte report_cashflow erneut aufrufen und die Felder korrigieren.`;
     try {
-      const retry = await callClaude(retryMessage);
+      const retry = await callClaude(params.sourceUrl, hint);
       input = retry.input;
     } catch {
       throw new LlmInvalidOutputError(

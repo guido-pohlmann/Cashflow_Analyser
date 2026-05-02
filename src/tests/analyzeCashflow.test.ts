@@ -52,9 +52,7 @@ describe("analyzeCashflow", () => {
   it("happy path: valid tool_use → CashflowResult", async () => {
     mockCreate.mockResolvedValueOnce(toolUseResponse(VALID_INPUT));
     const result = await analyzeCashflow({
-      text: "Cash flow from operations was $15.2 billion in Q4 FY25.",
       sourceUrl: "https://example.com/q4",
-      sourceMediaType: "text/html",
       requestedQuery: "ACME",
       sourceResolved: true,
     });
@@ -68,14 +66,22 @@ describe("analyzeCashflow", () => {
     expect(mockCreate).toHaveBeenCalledTimes(1);
   });
 
+  it("PDF URL → sourceMediaType application/pdf", async () => {
+    mockCreate.mockResolvedValueOnce(toolUseResponse(VALID_INPUT));
+    const result = await analyzeCashflow({
+      sourceUrl: "https://example.com/report.pdf",
+      requestedQuery: "ACME",
+      sourceResolved: false,
+    });
+    expect(result.sourceMediaType).toBe("application/pdf");
+  });
+
   it("schema fail then retry succeeds", async () => {
     const tooShort = { ...VALID_INPUT, interpretation: "kurz" }; // <30 chars
     mockCreate.mockResolvedValueOnce(toolUseResponse(tooShort));
     mockCreate.mockResolvedValueOnce(toolUseResponse(VALID_INPUT));
     const result = await analyzeCashflow({
-      text: "fake",
       sourceUrl: "https://example.com",
-      sourceMediaType: "text/html",
       requestedQuery: "https://example.com",
       sourceResolved: false,
     });
@@ -89,9 +95,7 @@ describe("analyzeCashflow", () => {
     mockCreate.mockResolvedValueOnce(toolUseResponse(tooShort));
     await expect(
       analyzeCashflow({
-        text: "fake",
         sourceUrl: "https://example.com",
-        sourceMediaType: "text/html",
         requestedQuery: "https://example.com",
         sourceResolved: false,
       }),
@@ -116,9 +120,7 @@ describe("analyzeCashflow", () => {
     mockCreate.mockResolvedValueOnce(toolUseResponse(noData));
     await expect(
       analyzeCashflow({
-        text: "fake",
         sourceUrl: "https://example.com",
-        sourceMediaType: "text/html",
         requestedQuery: "https://example.com",
         sourceResolved: false,
       }),
@@ -139,9 +141,7 @@ describe("analyzeCashflow", () => {
     };
     mockCreate.mockResolvedValueOnce(toolUseResponse(allNullHigh));
     const result = await analyzeCashflow({
-      text: "fake",
       sourceUrl: "https://example.com",
-      sourceMediaType: "text/html",
       requestedQuery: "https://example.com",
       sourceResolved: false,
     });
