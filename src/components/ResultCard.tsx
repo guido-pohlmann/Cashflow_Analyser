@@ -1,11 +1,62 @@
 import { formatAnalyzedAt } from "@/lib/format";
-import type { CashflowResult } from "@/lib/schema";
+import type { AnalyzeResponse, KgvResult } from "@/lib/schema";
 import { FigureCell } from "./FigureCell";
 import { VerdictBadge } from "./VerdictBadge";
 
 interface ResultCardProps {
-  data: CashflowResult;
+  data: AnalyzeResponse;
   onReset: () => void;
+}
+
+function formatKgv(v: number): string {
+  return v < 100 ? v.toFixed(1) : v.toFixed(0);
+}
+
+function KgvSection({ kgv }: { kgv: KgvResult }) {
+  const hasData =
+    kgv.currentKgv !== null ||
+    kgv.stockPrice !== null;
+  if (!hasData) return null;
+
+  return (
+    <section className="mt-4 rounded-lg border border-accent-deep/20 bg-bg/40 p-4">
+      <h3 className="mb-3 text-xs font-semibold uppercase tracking-wide text-fg-muted">
+        Bewertung
+      </h3>
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+        <div className="flex flex-col gap-0.5">
+          <span className="text-xs text-fg-muted">KGV aktuell</span>
+          <span className="text-lg font-semibold text-fg">
+            {kgv.currentKgv !== null ? formatKgv(kgv.currentKgv) : "—"}
+          </span>
+          {kgv.period && (
+            <span className="text-xs text-fg-muted">{kgv.period}</span>
+          )}
+        </div>
+        <div className="flex flex-col gap-0.5">
+          <span className="text-xs text-fg-muted">KGV Vorjahr</span>
+          <span className="text-lg font-semibold text-fg">
+            {kgv.previousKgv !== null ? formatKgv(kgv.previousKgv) : "—"}
+          </span>
+        </div>
+        {kgv.stockPrice !== null && (
+          <div className="flex flex-col gap-0.5">
+            <span className="text-xs text-fg-muted">Kurs</span>
+            <span className="text-lg font-semibold text-fg">
+              {kgv.stockPrice.toFixed(2)}
+              {kgv.currency ? ` ${kgv.currency}` : ""}
+            </span>
+            {kgv.exchange && (
+              <span className="text-xs text-fg-muted">{kgv.exchange}</span>
+            )}
+          </div>
+        )}
+      </div>
+      <p className="mt-2 text-xs text-fg-muted">
+        Stand: {formatAnalyzedAt(kgv.fetchedAt)} · Kein Anlagehinweis.
+      </p>
+    </section>
+  );
 }
 
 export function ResultCard({ data, onReset }: ResultCardProps) {
@@ -55,6 +106,8 @@ export function ResultCard({ data, onReset }: ResultCardProps) {
           currency={data.currency}
         />
       </div>
+
+      {data.kgv && <KgvSection kgv={data.kgv} />}
 
       <p className="mt-6 text-base leading-relaxed text-fg">
         {data.interpretation}

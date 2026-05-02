@@ -46,6 +46,22 @@ export const CashflowResult = z.object({
 });
 export type CashflowResult = z.infer<typeof CashflowResult>;
 
+export const KgvResult = z.object({
+  currentKgv: z.number().nullable(),
+  previousKgv: z.number().nullable(),
+  stockPrice: z.number().nullable(),
+  currency: z.string().nullable(),
+  exchange: z.string().nullable(),
+  period: z.string().nullable(),
+  fetchedAt: z.iso.datetime(),
+});
+export type KgvResult = z.infer<typeof KgvResult>;
+
+export const AnalyzeResponse = CashflowResult.extend({
+  kgv: KgvResult.nullable().optional(),
+});
+export type AnalyzeResponse = z.infer<typeof AnalyzeResponse>;
+
 export const AnalyzeRequest = z.object({
   query: z.string().trim().min(2).max(200),
 });

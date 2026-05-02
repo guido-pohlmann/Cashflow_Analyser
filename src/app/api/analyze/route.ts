@@ -5,6 +5,7 @@ import {
   RateLimitedError,
   mapError,
 } from "@/lib/errors";
+import { fetchKgv } from "@/lib/fetchKgv";
 import { getClientIp } from "@/lib/getClientIp";
 import { checkRateLimit } from "@/lib/rateLimit";
 import { resolveSource } from "@/lib/resolveSource";
@@ -54,24 +55,25 @@ export async function POST(req: Request): Promise<Response> {
 
     const cacheKey = `cf:v2:${sha256(attemptedUrl)}`;
     const cached = await cacheGet<CashflowResult>(cacheKey);
+
+    let cashflowResult: CashflowResult;
     if (cached) {
-      const enriched: CashflowResult = {
-        ...cached,
+      cashflowResult = { ...cached, requestedQuery: query, sourceResolved };
+    } else {
+      cashflowResult = await analyzeCashflow({
+        sourceUrl: attemptedUrl,
         requestedQuery: query,
         sourceResolved,
-      };
-      return Response.json(enriched, { headers: { "x-cache": "hit" } });
+      });
+      await cachePut(cacheKey, cashflowResult, CACHE_TTL_SECONDS);
     }
 
-    const result = await analyzeCashflow({
-      sourceUrl: attemptedUrl,
-      requestedQuery: query,
-      sourceResolved,
-    });
+    // KGV always fetched fresh (stock price changes daily); never cached
+    const identifier = cashflowResult.company ?? query;
+    const kgv = await fetchKgv(identifier);
 
-    await cachePut(cacheKey, result, CACHE_TTL_SECONDS);
-
-    return Response.json(result, { headers: { "x-cache": "miss" } });
+    const headers: Record<string, string> = { "x-cache": cached ? "hit" : "miss" };
+    return Response.json({ ...cashflowResult, kgv }, { headers });
   } catch (error) {
     return mapError(error, { requestedQuery, attemptedUrl, sourceResolved });
   }

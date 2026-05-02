@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import type { ApiErrorCode, CashflowResult } from "@/lib/schema";
+import type { AnalyzeResponse, ApiErrorCode } from "@/lib/schema";
 import { ErrorMessage } from "./ErrorMessage";
 import { LoadingState } from "./LoadingState";
 import { ResultCard } from "./ResultCard";
@@ -17,7 +17,7 @@ interface ErrorContext {
 type Status =
   | { kind: "idle" }
   | { kind: "loading"; phase: LoadingPhase }
-  | { kind: "success"; data: CashflowResult }
+  | { kind: "success"; data: AnalyzeResponse }
   | ({ kind: "error"; code: ApiErrorCode } & ErrorContext);
 
 const CLIENT_TIMEOUT_MS = 60_000;
@@ -78,7 +78,7 @@ export function UrlAnalyzerCard() {
       clearTimeout(timer);
 
       if (response.ok) {
-        const data = (await response.json()) as CashflowResult;
+        const data = (await response.json()) as AnalyzeResponse;
         setStatus({ kind: "success", data });
         return;
       }
