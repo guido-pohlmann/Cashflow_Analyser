@@ -16,7 +16,7 @@ import { AnalyzeRequest, type CashflowResult } from "@/lib/schema";
 import { sha256 } from "@/lib/sha256";
 
 export const runtime = "nodejs";
-export const maxDuration = 30;
+export const maxDuration = 60;
 export const dynamic = "force-dynamic";
 
 const CACHE_TTL_SECONDS = 24 * 60 * 60;

@@ -19,7 +19,7 @@ export type FetchedPage =
       bodyBytes: Uint8Array;
     };
 
-const DEFAULT_TIMEOUT_MS = 15_000;
+const DEFAULT_TIMEOUT_MS = 20_000;
 const MAX_BYTES_HTML = 5_000_000;
 const MAX_BYTES_PDF = 10_000_000;
 const MAX_REDIRECTS = 5;
