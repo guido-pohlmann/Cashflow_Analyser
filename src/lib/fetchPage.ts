@@ -23,11 +23,28 @@ const DEFAULT_TIMEOUT_MS = 15_000;
 const MAX_BYTES_HTML = 5_000_000;
 const MAX_BYTES_PDF = 10_000_000;
 const MAX_REDIRECTS = 5;
-// SEC EDGAR fair-access policy verlangt eine identifizierbare User-Agent
-// (Format: "Name Email"). Diese UA erfüllt das und wird auf den meisten
-// öffentlichen Quellen (HKEXnews, IR-PDFs) ebenfalls akzeptiert.
-const USER_AGENT =
+// SEC EDGAR fair-access policy requires an identifiable User-Agent (name + contact).
+const SEC_UA =
   "CashflowAnalyzer/1.0 (+https://cashflow-analyser.vercel.app; guido.pohlmann@googlemail.com)";
+// Corporate IR sites and CDN-protected domains require a browser-like UA + Referer.
+const BROWSER_UA =
+  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36";
+
+const SEC_EDGAR_HOST_RE = /(?:^|\.)sec\.gov$/i;
+
+function buildHeaders(u: URL): Record<string, string> {
+  const isEdgar = SEC_EDGAR_HOST_RE.test(u.hostname);
+  const headers: Record<string, string> = {
+    "User-Agent": isEdgar ? SEC_UA : BROWSER_UA,
+    Accept:
+      "text/html,application/xhtml+xml,application/pdf;q=0.95,*/*;q=0.8",
+    "Accept-Language": "de,en;q=0.7",
+  };
+  if (!isEdgar) {
+    headers["Referer"] = `${u.protocol}//${u.host}/`;
+  }
+  return headers;
+}
 
 const HTML_CONTENT_TYPE_RE = /^(text\/html|application\/xhtml\+xml)/i;
 const PDF_CONTENT_TYPE_RE = /^application\/pdf\b/i;
@@ -103,12 +120,7 @@ export async function fetchPage(
       const response = await fetch(currentUrl, {
         method: "GET",
         signal: ac.signal,
-        headers: {
-          "User-Agent": USER_AGENT,
-          Accept:
-            "text/html,application/xhtml+xml,application/pdf;q=0.95,*/*;q=0.8",
-          "Accept-Language": "de,en;q=0.7",
-        },
+        headers: buildHeaders(u),
         redirect: "manual",
       });
 
