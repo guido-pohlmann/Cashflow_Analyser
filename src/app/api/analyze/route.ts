@@ -19,7 +19,7 @@ export const runtime = "nodejs";
 export const maxDuration = 30;
 export const dynamic = "force-dynamic";
 
-const CACHE_TTL_SECONDS = 30 * 60;
+const CACHE_TTL_SECONDS = 24 * 60 * 60;
 const URL_RE = /^https?:\/\//i;
 
 export async function POST(req: Request): Promise<Response> {

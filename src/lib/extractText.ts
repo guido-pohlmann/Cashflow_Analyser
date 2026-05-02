@@ -9,6 +9,17 @@ export interface Extracted {
 
 const MAX_CHARS = 30_000;
 
+const CASHFLOW_KW = [
+  "cash flow", "cashflow", "operating activities", "investing activities",
+  "financing activities", "free cash", "net cash",
+  "kapitalflussrechnung", "operativer cashflow",
+];
+
+function hasCashflowContent(text: string): boolean {
+  const lower = text.toLowerCase();
+  return CASHFLOW_KW.some((kw) => lower.includes(kw));
+}
+
 function serializeTables(doc: Document): string[] {
   const out: string[] = [];
   for (const table of Array.from(doc.querySelectorAll("table"))) {
@@ -47,8 +58,14 @@ export function extractText(html: string, baseUrl: string): Extracted {
   const articleTitle = article?.title?.trim() || null;
   const articleText = (article?.textContent ?? "").trim().replace(/\s+/g, " ");
 
+  // Prefer cashflow-relevant tables; fallback to all tables
+  const cfTables = tables.filter(hasCashflowContent);
+  const relevantTables = cfTables.length > 0 ? cfTables : tables;
+
   const tableSection =
-    tables.length > 0 ? "\n\n--- Tabellen ---\n" + tables.join("\n\n") : "";
+    relevantTables.length > 0
+      ? "\n\n--- Tabellen ---\n" + relevantTables.join("\n\n")
+      : "";
 
   let text = articleText + tableSection;
   if (text.length > MAX_CHARS) text = text.slice(0, MAX_CHARS);

@@ -3,6 +3,18 @@ import { PdfParsingFailedError } from "./errors";
 import type { Extracted } from "./extractText";
 
 const MAX_CHARS = 30_000;
+const SMART_CHARS = 15_000;
+
+const CASHFLOW_KW = [
+  "cash flow", "cashflow", "operating activities", "investing activities",
+  "financing activities", "free cash", "net cash",
+  "kapitalflussrechnung", "operativer cashflow",
+];
+
+function hasCashflowContent(text: string): boolean {
+  const lower = text.toLowerCase();
+  return CASHFLOW_KW.some((kw) => lower.includes(kw));
+}
 
 export async function extractTextFromPdf(
   bytes: Uint8Array,
@@ -42,8 +54,25 @@ export async function extractTextFromPdf(
     sections.push(`--- Seite ${i + 1} ---\n${pageText}`);
   }
 
-  let text = sections.join("\n\n");
-  if (text.length > MAX_CHARS) text = text.slice(0, MAX_CHARS);
+  // Smart page selection: first page + all cashflow pages; fallback to all
+  const cfPageIndices = sections.reduce<number[]>((acc, s, i) => {
+    if (hasCashflowContent(s)) acc.push(i);
+    return acc;
+  }, []);
+
+  let text: string;
+  let cap: number;
+  if (cfPageIndices.length > 0) {
+    const selected = [...new Set([0, ...cfPageIndices])].sort(
+      (a, b) => a - b,
+    );
+    text = selected.map((i) => sections[i]).join("\n\n");
+    cap = SMART_CHARS;
+  } else {
+    text = sections.join("\n\n");
+    cap = MAX_CHARS;
+  }
+  if (text.length > cap) text = text.slice(0, cap);
 
   if (!title) {
     const firstNonEmpty = pages.find((p) => p.trim().length > 0) ?? "";
