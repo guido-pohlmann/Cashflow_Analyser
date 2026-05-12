@@ -25,6 +25,8 @@ Einzelner Test-Case: `npx vitest run src/tests/<datei>.test.ts -t "name"`
 ## Nicht-offensichtliche Fallen
 
 - **Coverage OOMt mit `npm test --coverage`.** jsdom + Vitest-Worker-Pool crashen unter v8/istanbul. `test:coverage` läuft nur `src/lib` mit `--environment=node` + istanbul-Provider; DoD-Ziel ≥ 80 % erreichbar (Stand: 91 % Stmts / 94 % Lines). `npm test` selbst läuft mit `fileParallelism: false` — sonst sterben Worker zufällig.
+- **Zod v4 API** — `z.url()` (nicht `z.string().url()`), `z.iso.datetime()` (nicht `z.string().datetime()`). Diese Methoden aus v3-Snippets fehlen in v4 und erzeugen Runtime-Fehler, keine TS-Fehler.
+- **`extractTextPdf.test.ts` ist bewusst nicht im `test:coverage`-Script** (unpdf hängt in Node-vm-Sandbox); der Test läuft in `npm test`, aber Coverage wird dort nicht gemessen.
 - **SSRF-Guard nicht umgehen.** `resolveAndCheck(url)` wird für jeden Redirect-Hop aufgerufen. Nicht entfernen, um lokal zu testen — es ist Teil des Sicherheitsmodells.
 - **Prompt-Cache-Breakpoints.** System-Prompt und Tool-Schema in `analyzeCashflow.ts`, `resolveSource.ts` und `fetchKgv.ts` tragen `cache_control: { type: "ephemeral", ttl: "1h" }`. Jede beiläufige Formatierung invalidiert alle Cache-Hits.
 - **Cache-Key-Versionierung.** Keys tragen Präfixe mit Versionsnummer (`cf:v2:`, `src:v3:`, `kgv:v1:`). Bei inkompatiblen Schema-Änderungen Präfix hochzählen — sonst liest der Code gecachte Objekte im alten Format.
@@ -63,8 +65,16 @@ POST /api/analyze  (Node-Runtime, maxDuration 60 s)
 | Pfad | Inhalt |
 |---|---|
 | `src/lib/` | Server-Logik, keine React-Imports. Schwerpunkt der Tests. |
-| `src/lib/schema.ts` | Alle Zod-Typen: `CashflowResult`, `KgvResult`, `AnalyzeRequest`, `ApiError`, `ApiErrorCode` |
+| `src/lib/schema.ts` | Alle Zod-Typen; `AnalyzeResponse = CashflowResult + kgv` ist der HTTP-Response-Typ |
 | `src/lib/errors.ts` | Alle Error-Klassen (`CashflowError`-Subklassen) + `mapError()` → HTTP-Status |
+| `src/lib/extractText.ts` | HTML→Text via linkedom + Readability; Tabellen vor Readability extrahieren (sonst verworfen) |
+| `src/lib/extractTextPdf.ts` | PDF→Text via unpdf; Smart-Page-Selection: cashflow-relevante Seiten + Seite 1 (15 k Cap), sonst alle (30 k Cap) |
+| `src/lib/ssrfGuard.ts` | `resolveAndCheck(url)` — DNS + CIDR-Blocklist-Check; wird pro Redirect-Hop aufgerufen |
+| `src/lib/cache.ts` | Upstash-KV-Wrapper mit In-Memory-Fallback; `cacheGet` / `cachePut` |
+| `src/lib/rateLimit.ts` | `checkRateLimit(ip)` — 10 req/h/IP via Upstash; no-op ohne ENV |
+| `src/lib/format.ts` | Präsentations-Helpers: `formatFigure()` (de-DE Locale + Einheit), `formatAnalyzedAt()` |
+| `src/lib/sha256.ts` | `sha256(input)` → Hex-String für Cache-Keys |
+| `src/lib/getClientIp.ts` | IP-Extraktion aus Next-Request-Headers für Rate-Limit |
 | `src/lib/anthropicClient.ts` | Singleton `getAnthropicClient()`, `DEFAULT_MODEL`, `RESOLVER_MODEL` |
 | `src/components/` | UI, alle Komponenten mit `"use client"` wenn State vorhanden |
 | `src/app/` | App-Router: `page.tsx` (statisch), `api/analyze/route.ts` (dynamisch) |
@@ -90,6 +100,17 @@ UPSTASH_REDIS_REST_TOKEN=
 - **Vercel** Hobby, Region `fra1` (Frankfurt). `main` = Production, Preview-Deployments pro PR.
 - **Runtime:** Node (nicht Edge — jsdom benötigt Node-APIs).
 - GitHub-Repo: https://github.com/guido-pohlmann/Cashflow_Analyser
+
+## Installierte Skills
+
+Vier Skills sind im Workspace unter `.agents/skills/` installiert und per `/skill-name` aufrufbar:
+
+| Skill | Zweck |
+|---|---|
+| `vercel-react-best-practices` | React-Performance-Regeln (Memoization, Suspense, Server Components) |
+| `frontend-design` | UI/UX-Design-Guidelines |
+| `web-design-guidelines` | Allgemeine Web-Design-Prinzipien |
+| `deployments-cicd` | Vercel-Deployment- und CI/CD-Workflows |
 
 ## Tailwind Design-Tokens
 
