@@ -7,14 +7,14 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Kommandos
 
 ```bash
-npm run dev            # Turbopack-Dev-Server (Port 3000)
+npm run dev            # Turbopack-Dev-Server (Next.js 16 default, Port 3000)
 npm run build          # Production-Build
 npm run start          # Production-Server (nach build)
 npm run lint           # ESLint
 npm run typecheck      # tsc --noEmit
 npm test               # Vitest single-run (jsdom + node Env)
 npm run test:watch     # Vitest im Watch-Modus
-npm run test:coverage  # Coverage nur für src/lib mit --environment=node
+npm run test:coverage  # Coverage nur für ausgewählte src/lib-Tests mit --environment=node
 ```
 
 Einzelner Testlauf: `npx vitest run src/tests/<datei>.test.ts`
@@ -24,14 +24,15 @@ Einzelner Test-Case: `npx vitest run src/tests/<datei>.test.ts -t "name"`
 
 ## Nicht-offensichtliche Fallen
 
-- **Coverage OOMt mit `npm test --coverage`.** jsdom + Vitest-Worker-Pool crashen unter v8/istanbul. `test:coverage` läuft nur `src/lib` mit `--environment=node` + istanbul-Provider; DoD-Ziel ≥ 80 % erreichbar (Stand: 91 % Stmts / 94 % Lines). `npm test` selbst läuft mit `fileParallelism: false` — sonst sterben Worker zufällig.
-- **Zod v4 API** — `z.url()` (nicht `z.string().url()`), `z.iso.datetime()` (nicht `z.string().datetime()`). Diese Methoden aus v3-Snippets fehlen in v4 und erzeugen Runtime-Fehler, keine TS-Fehler.
-- **`extractTextPdf.test.ts` ist bewusst nicht im `test:coverage`-Script** (unpdf hängt in Node-vm-Sandbox); der Test läuft in `npm test`, aber Coverage wird dort nicht gemessen.
-- **SSRF-Guard nicht umgehen.** `resolveAndCheck(url)` wird für jeden Redirect-Hop aufgerufen. Nicht entfernen, um lokal zu testen — es ist Teil des Sicherheitsmodells.
-- **Prompt-Cache-Breakpoints.** System-Prompt und Tool-Schema in `analyzeCashflow.ts`, `resolveSource.ts` und `fetchKgv.ts` tragen `cache_control: { type: "ephemeral", ttl: "1h" }`. Jede beiläufige Formatierung invalidiert alle Cache-Hits.
+- **Next.js 16 hat Breaking Changes ggü. Trainingsdaten.** Bei Next-spezifischen API/Konventionen-Fragen zuerst `node_modules/next/dist/docs/` lesen (steht so in `AGENTS.md`).
+- **Zod v4 (`^4.3.6`) — nicht v3.** API-Breaking-Changes: `z.url()` statt `z.string().url()`, `z.iso.datetime()` statt `z.string().datetime()`, `.optional()` gibt `ZodOptional` statt `ZodUnion` zurück, `.safeParse()` hat neue Fehlerstruktur. Keine Zod v3-Snippets einkopieren.
+- **React 19 (`19.2.x`)** — `useFormState` → `useActionState`, neue Async-Transitions, Server-Actions-Semantik geändert. Keine React 18-APIs annehmen.
+- **Node 22.x Pflicht** (`engines` in `package.json`). Lokal und auf Vercel muss Node 22 laufen.
+- **Coverage OOMt mit `npm test --coverage`.** jsdom + Vitest-Worker-Pool kollabieren unter v8/istanbul-Instrumentierung. `test:coverage` läuft explizit aufgelistete `src/tests/`-Dateien mit `--environment=node` + istanbul (keine UI-Tests, keine API-Mock-Tests). DoD-Ziel ≥ 80 % in `src/lib`: Stand 91 % Stmts / 94 % Lines. `npm test` selbst läuft mit `fileParallelism: false` — sonst sterben Worker zufällig. **`extractTextPdf.test.ts` ist bewusst nicht im `test:coverage`-Script** (unpdf hängt in Node-vm-Sandbox); der Test läuft trotzdem in `npm test`.
+- **SSRF-Guard nicht umgehen.** Jeder Hop in `fetchPage` (auch Redirects) wird gegen IPv4/IPv6-Blocklisten + DNS-Auflösung geprüft. Das ist Teil des Sicherheitsmodells — nicht den Aufruf entfernen, um „lokal zu testen". `resolveSource` selbst macht keine SSRF-Prüfung — das übernimmt `fetchPage` im nächsten Schritt.
+- **Prompt-Cache-Breakpoints.** System-Prompt und Tool-Schema in `analyzeCashflow.ts`, `resolveSource.ts` und `fetchKgv.ts` tragen `cache_control: { type: "ephemeral", ttl: "1h" }`. Änderungen an einem der Strings invalidieren den Cache-Hit aller Folgeaufrufe — bewusst tun, nicht beiläufig formatieren.
 - **Cache-Key-Versionierung.** Keys tragen Präfixe mit Versionsnummer (`cf:v2:`, `src:v3:`, `kgv:v1:`). Bei inkompatiblen Schema-Änderungen Präfix hochzählen — sonst liest der Code gecachte Objekte im alten Format.
-- **`anthropicClient.ts`** ist vom Coverage-Include ausgenommen (`vitest.config.ts`); es ist ein Singleton-Wrapper ohne testbare Logik.
-- **`resolveSource` macht keine SSRF-Prüfung** — das übernimmt `fetchPage` im nächsten Schritt.
+- **`anthropicClient.ts`** ist absichtlich vom Coverage-Include ausgenommen (`vitest.config.ts`); es ist ein Singleton-Wrapper um den SDK ohne sinnvoll testbare Logik.
 
 ## Architektur-Pipeline
 
@@ -65,10 +66,10 @@ POST /api/analyze  (Node-Runtime, maxDuration 60 s)
 | Pfad | Inhalt |
 |---|---|
 | `src/lib/` | Server-Logik, keine React-Imports. Schwerpunkt der Tests. |
-| `src/lib/schema.ts` | Alle Zod-Typen; `AnalyzeResponse = CashflowResult + kgv` ist der HTTP-Response-Typ |
-| `src/lib/errors.ts` | Alle Error-Klassen (`CashflowError`-Subklassen) + `mapError()` → HTTP-Status |
-| `src/lib/extractText.ts` | HTML→Text via linkedom + Readability; Tabellen vor Readability extrahieren (sonst verworfen) |
-| `src/lib/extractTextPdf.ts` | PDF→Text via unpdf; Smart-Page-Selection: cashflow-relevante Seiten + Seite 1 (15 k Cap), sonst alle (30 k Cap) |
+| `src/lib/schema.ts` | Alle Zod-Typen: `CashflowResult`, `KgvResult`, `AnalyzeRequest`, `ApiError`, `ApiErrorCode`; `AnalyzeResponse = CashflowResult + kgv` ist der tatsächliche HTTP-Response-Typ |
+| `src/lib/errors.ts` | Alle Error-Klassen (`CashflowError`-Subklassen) + `mapError()` → HTTP-Status (siehe SPEC §5) |
+| `src/lib/extractText.ts` | HTML→Text via linkedom + Readability; Tabellen werden vor Readability serialisiert (Readability verwirft sie sonst); Cap 30 000 Zeichen |
+| `src/lib/extractTextPdf.ts` | PDF→Text via unpdf; Smart-Page-Selection: erste Seite + cashflow-relevante Seiten (15 000 Zeichen Cap), Fallback alle Seiten (30 000 Zeichen) |
 | `src/lib/ssrfGuard.ts` | `resolveAndCheck(url)` — DNS + CIDR-Blocklist-Check; wird pro Redirect-Hop aufgerufen |
 | `src/lib/cache.ts` | Upstash-KV-Wrapper mit In-Memory-Fallback; `cacheGet` / `cachePut` |
 | `src/lib/rateLimit.ts` | `checkRateLimit(ip)` — 10 req/h/IP via Upstash; no-op ohne ENV |
@@ -95,10 +96,12 @@ UPSTASH_REDIS_REST_URL=
 UPSTASH_REDIS_REST_TOKEN=
 ```
 
+Lokale Konfiguration in `.env.local` (gitignored).
+
 ## Deployment
 
 - **Vercel** Hobby, Region `fra1` (Frankfurt). `main` = Production, Preview-Deployments pro PR.
-- **Runtime:** Node (nicht Edge — jsdom benötigt Node-APIs).
+- **Runtime:** Node 22.x (nicht Edge — jsdom benötigt Node-APIs).
 - GitHub-Repo: https://github.com/guido-pohlmann/Cashflow_Analyser
 
 ## Installierte Skills
