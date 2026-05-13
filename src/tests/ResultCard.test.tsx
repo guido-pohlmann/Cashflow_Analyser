@@ -20,7 +20,6 @@ const SAMPLE: CashflowResult = {
     "Stark positiver operativer Cashflow weit über den Investitions- und Finanzierungsabflüssen. Free Cashflow zweistellig.",
   confidence: "high",
   sourceUrl: "https://example.com",
-  sourceMediaType: "text/html",
   requestedQuery: "https://example.com",
   sourceResolved: false,
   analyzedAt: "2026-04-25T12:00:00.000Z",

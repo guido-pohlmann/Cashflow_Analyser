@@ -18,6 +18,10 @@ const COPY: Record<ApiErrorCode, string> = {
     "Das PDF konnte nicht ausgewertet werden (beschädigt oder enthält nur Bilder). Versuche eine HTML-Quelle oder ein anderes PDF.",
   NO_SOURCE_FOUND:
     "Zu dieser Eingabe wurde keine Cashflow-Quelle gefunden. Versuche einen präziseren Firmennamen, ein Tickersymbol oder eine direkte URL.",
+  EULERPOOL_NOT_FOUND:
+    "Dieses Unternehmen wurde in der Eulerpool-Datenbank nicht gefunden. Versuche ein Tickersymbol (z. B. AAPL, SAP) oder einen präziseren Firmennamen.",
+  EULERPOOL_ERROR:
+    "Der Finanzdaten-Service ist gerade nicht erreichbar. Bitte in einem Moment erneut versuchen.",
   INTERNAL: "Unerwarteter Fehler. Bitte erneut versuchen.",
 };
 

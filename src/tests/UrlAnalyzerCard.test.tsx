@@ -20,7 +20,6 @@ const VALID_RESULT: CashflowResult = {
     "Der operative Cashflow ist mit 15,2 Mrd. USD deutlich positiv und übersteigt die Investitions- und Finanzierungsabflüsse, was zu einem starken freien Cashflow von 11,8 Mrd. USD führt.",
   confidence: "high",
   sourceUrl: "https://example.com",
-  sourceMediaType: "text/html",
   requestedQuery: "ACME",
   sourceResolved: true,
   analyzedAt: "2026-04-26T10:00:00.000Z",

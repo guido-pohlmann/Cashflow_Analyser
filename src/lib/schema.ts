@@ -23,9 +23,6 @@ export const CashflowFigures = z.object({
 });
 export type CashflowFigures = z.infer<typeof CashflowFigures>;
 
-export const SourceMediaType = z.enum(["text/html", "application/pdf"]);
-export type SourceMediaType = z.infer<typeof SourceMediaType>;
-
 export const CashflowResult = z.object({
   company: z.string().nullable(),
   period: z.string().nullable(),
@@ -37,8 +34,7 @@ export const CashflowResult = z.object({
   verdict: Verdict,
   interpretation: z.string().min(30).max(1200),
   confidence: Confidence,
-  sourceUrl: z.url(),
-  sourceMediaType: SourceMediaType,
+  sourceUrl: z.url().nullable(),
   requestedQuery: z.string(),
   sourceResolved: z.boolean(),
   analyzedAt: z.iso.datetime(),
@@ -79,6 +75,8 @@ export const ApiErrorCode = z.enum([
   "RATE_LIMITED",
   "PDF_PARSING_FAILED",
   "NO_SOURCE_FOUND",
+  "EULERPOOL_NOT_FOUND",
+  "EULERPOOL_ERROR",
   "INTERNAL",
 ]);
 export type ApiErrorCode = z.infer<typeof ApiErrorCode>;

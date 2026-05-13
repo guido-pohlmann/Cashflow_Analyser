@@ -124,6 +124,7 @@ export function ResultCard({ data, onReset }: ResultCardProps) {
       <footer className="mt-6 flex flex-col gap-3 border-t border-accent-deep/20 pt-4 text-xs text-fg-muted sm:flex-row sm:items-center sm:justify-between">
         <div className="flex flex-col gap-1">
           <div className="flex flex-wrap items-center gap-2">
+            {data.sourceUrl && (
             <a
               href={data.sourceUrl}
               target="_blank"
@@ -133,6 +134,7 @@ export function ResultCard({ data, onReset }: ResultCardProps) {
             >
               {data.sourceUrl}
             </a>
+            )}
             {data.sourceResolved && (
               <span
                 data-testid="source-resolved-badge"

@@ -25,7 +25,6 @@ const validResult = {
     "Der operative Cashflow zeigt eine deutlich positive Entwicklung. Investitionen wurden überwiegend aus eigener Kraft finanziert.",
   confidence: "high",
   sourceUrl: "https://investor.example.com/q4",
-  sourceMediaType: "text/html",
   requestedQuery: "ACME",
   sourceResolved: true,
   analyzedAt: "2026-04-25T12:00:00.000Z",
@@ -228,20 +227,14 @@ describe("ApiError", () => {
   });
 });
 
-describe("sourceMediaType", () => {
-  it("accepts application/pdf", () => {
-    const out = CashflowResult.safeParse({
-      ...validResult,
-      sourceMediaType: "application/pdf",
-    });
+describe("sourceUrl", () => {
+  it("accepts null sourceUrl", () => {
+    const out = CashflowResult.safeParse({ ...validResult, sourceUrl: null });
     expect(out.success).toBe(true);
   });
 
-  it("rejects unknown media types", () => {
-    const out = CashflowResult.safeParse({
-      ...validResult,
-      sourceMediaType: "text/plain",
-    });
+  it("rejects non-URL strings", () => {
+    const out = CashflowResult.safeParse({ ...validResult, sourceUrl: "not-a-url" });
     expect(out.success).toBe(false);
   });
 });

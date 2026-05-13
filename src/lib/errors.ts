@@ -86,6 +86,20 @@ export class NoSourceFoundError extends CashflowError {
   }
 }
 
+export class EulerPoolNotFoundError extends CashflowError {
+  constructor(message = "Unternehmen nicht in Eulerpool gefunden") {
+    super("EULERPOOL_NOT_FOUND", message);
+    this.name = "EulerPoolNotFoundError";
+  }
+}
+
+export class EulerPoolError extends CashflowError {
+  constructor(message = "Eulerpool API-Fehler") {
+    super("EULERPOOL_ERROR", message);
+    this.name = "EulerPoolError";
+  }
+}
+
 const HTTP_STATUS: Record<ApiErrorCode, number> = {
   INVALID_URL: 400,
   BLOCKED_TARGET: 400,
@@ -98,6 +112,8 @@ const HTTP_STATUS: Record<ApiErrorCode, number> = {
   RATE_LIMITED: 429,
   PDF_PARSING_FAILED: 422,
   NO_SOURCE_FOUND: 422,
+  EULERPOOL_NOT_FOUND: 422,
+  EULERPOOL_ERROR: 502,
   INTERNAL: 500,
 };
 

@@ -16,6 +16,8 @@ describe("schema sanity", () => {
     expect(ApiErrorCode.options).toContain("RATE_LIMITED");
     expect(ApiErrorCode.options).toContain("PDF_PARSING_FAILED");
     expect(ApiErrorCode.options).toContain("NO_SOURCE_FOUND");
-    expect(ApiErrorCode.options.length).toBe(12);
+    expect(ApiErrorCode.options).toContain("EULERPOOL_NOT_FOUND");
+    expect(ApiErrorCode.options).toContain("EULERPOOL_ERROR");
+    expect(ApiErrorCode.options.length).toBe(14);
   });
 });

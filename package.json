@@ -10,19 +10,16 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:coverage": "vitest run --coverage --environment=node src/tests/ssrfGuard.test.ts src/tests/schema.test.ts src/tests/format.test.ts src/tests/fetchPage.test.ts src/tests/analyzeCashflow.test.ts src/tests/extractText.test.ts src/tests/cache.test.ts src/tests/errors.test.ts src/tests/getClientIp.test.ts src/tests/rateLimit.test.ts src/tests/sha256.test.ts src/tests/sanity.test.ts"
+    "test:coverage": "vitest run --coverage --environment=node src/tests/eulerPool.test.ts src/tests/analyzeCashflow.test.ts src/tests/schema.test.ts src/tests/format.test.ts src/tests/cache.test.ts src/tests/errors.test.ts src/tests/getClientIp.test.ts src/tests/rateLimit.test.ts src/tests/sha256.test.ts src/tests/sanity.test.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.91.1",
-    "@mozilla/readability": "^0.6.0",
     "@upstash/ratelimit": "^2.0.8",
     "@upstash/redis": "^1.37.0",
     "clsx": "^2.1.1",
-    "linkedom": "^0.18.12",
     "next": "16.2.4",
     "react": "19.2.4",
     "react-dom": "19.2.4",
-    "unpdf": "^1.6.2",
     "zod": "^4.3.6"
   },
   "devDependencies": {

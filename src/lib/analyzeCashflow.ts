@@ -1,44 +1,15 @@
-import { RESOLVER_MODEL, getAnthropicClient } from "./anthropicClient";
-import {
-  LlmFailedError,
-  LlmInvalidOutputError,
-  NoCashflowDataError,
-} from "./errors";
-import { CashflowResult, type SourceMediaType } from "./schema";
+import { z } from "zod";
 
-const TOOL_NAME = "report_cashflow";
+import { RESOLVER_MODEL, getAnthropicClient } from "./anthropicClient";
+import { LlmFailedError, LlmInvalidOutputError, NoCashflowDataError } from "./errors";
+import type { EulerCashflow } from "./eulerPool";
+import { Confidence, CashflowResult, Verdict } from "./schema";
+
+const TOOL_NAME = "report_interpretation";
 
 const TOOL_INPUT_SCHEMA = {
   type: "object" as const,
   properties: {
-    company: { type: ["string", "null"] },
-    period: { type: ["string", "null"] },
-    currency: {
-      type: ["string", "null"],
-      pattern: "^[A-Z]{3}$",
-      description: "ISO-4217 Währungscode wie USD, EUR, GBP — null wenn unklar.",
-    },
-    figures: {
-      type: "object",
-      properties: {
-        operating: { type: ["number", "null"] },
-        investing: { type: ["number", "null"] },
-        financing: { type: ["number", "null"] },
-        freeCashflow: { type: ["number", "null"] },
-        unit: {
-          type: "string",
-          enum: ["thousand", "million", "billion", "absolute"],
-        },
-      },
-      required: [
-        "operating",
-        "investing",
-        "financing",
-        "freeCashflow",
-        "unit",
-      ],
-      additionalProperties: false,
-    },
     verdict: {
       type: "string",
       enum: ["positive", "neutral", "negative"],
@@ -59,109 +30,81 @@ const TOOL_INPUT_SCHEMA = {
       maxItems: 10,
     },
   },
-  required: [
-    "company",
-    "period",
-    "currency",
-    "figures",
-    "verdict",
-    "interpretation",
-    "confidence",
-    "warnings",
-  ],
+  required: ["verdict", "interpretation", "confidence", "warnings"],
   additionalProperties: false,
 };
 
-const SYSTEM_PROMPT = `Du bist ein erfahrener Finanzanalyst. Deine einzige Aufgabe ist es, Cashflow-Daten der letzten berichteten Periode zu identifizieren und strukturiert per Tool-Call \`report_cashflow\` zurückzugeben.
+const SYSTEM_PROMPT =
+  "Du bist ein erfahrener Finanzanalyst. Du erhältst strukturierte Cashflow-Daten eines Unternehmens aus einer Finanzdatenbank und gibst per Tool-Call `report_interpretation` eine prägnante Bewertung auf Deutsch zurück.\n\n" +
+  "Regeln:\n" +
+  "1. `verdict`: positive = operativer CF deutlich positiv UND Free-CF ≥ 0; negative = operativer CF negativ ODER Free-CF deutlich negativ; neutral = sonst.\n" +
+  "2. `interpretation`: 2–5 Sätze, Deutsch, nüchtern, keine Anlageberatung, keine Kauf-/Verkaufsempfehlung. Beziehe dich auf die konkreten Zahlen.\n" +
+  "3. `confidence`: high = alle Cashflows vorhanden und plausibel; medium = 1–2 fehlen oder Periode unbekannt; low = keine oder nur fragmentarische Daten.\n" +
+  "4. `warnings`: Hinweise auf Datenlücken oder Besonderheiten. Leer wenn keine.\n\n" +
+  "Antworte NUR über den Tool-Call `report_interpretation`. Keine Prosa.";
 
-Falls du eine URL erhältst: Rufe sie mit dem web_search-Tool auf und lies den Inhalt.
-Falls du einen Textauszug erhältst: Analysiere den bereitgestellten Inhalt direkt.
+const InterpretationOutput = z.object({
+  verdict: Verdict,
+  interpretation: z.string().min(30).max(1200),
+  confidence: Confidence,
+  warnings: z.array(z.string()).max(10),
+});
 
-Regeln:
-1. Verwende ausschließlich Zahlen, die im Inhalt explizit belegt sind. Rate nicht und ergänze keine Zahlen aus Allgemeinwissen.
-2. "Letzte Periode" = der jüngste ausgewiesene Berichtszeitraum (Quartal, Halbjahr oder Geschäftsjahr).
-3. Einheit \`unit\` beschreibt die Skalierung der Zahlen im Feld \`figures\`. Wenn "Milliarden USD" und operating = 15,2 → \`operating: 15.2, unit: "billion", currency: "USD"\`.
-4. Free Cashflow: nur angeben, wenn direkt belegt oder trivial ableitbar (Operating - CapEx). Andernfalls null.
-5. \`confidence\`: high = alle drei Haupt-Cashflows explizit, klare Periode; medium = 1–2 fehlen oder Periode mehrdeutig; low = nur Fragmente.
-6. \`verdict\`: positive = operativer CF deutlich positiv UND Free-CF ≥ 0; negative = operativer CF negativ ODER Free-CF deutlich negativ; neutral = sonst.
-7. \`interpretation\`: 2–5 Sätze, Deutsch, nüchtern, keine Anlageberatung, keine Kauf-/Verkaufsempfehlung.
-8. Bei Unsicherheit Eintrag in \`warnings\` (z. B. "Quelle ist Pressemitteilung, kein vollständiger Bericht").
-9. Wenn keinerlei Cashflow-Daten vorhanden: Tool trotzdem aufrufen, alle \`figures\` null, \`verdict: "neutral"\`, \`confidence: "low"\`, Grund in \`warnings\`.
+const UNIT_LABEL: Record<string, string> = {
+  billion: "Mrd.",
+  million: "Mio.",
+  thousand: "Tsd.",
+  absolute: "",
+};
 
-Antworte NUR über den Tool-Call \`report_cashflow\`. Keine Prosa.`;
-
-interface AnthropicMessageBlock {
+interface AnthropicBlock {
   type: string;
   name?: string;
   input?: unknown;
 }
 
-interface AnthropicResponse {
-  content: AnthropicMessageBlock[];
+function formatUserMessage(cashflow: EulerCashflow): string {
+  const unit = UNIT_LABEL[cashflow.unit] ?? "";
+  const fmt = (v: number | null) =>
+    v === null ? "n/a" : `${v.toFixed(2)}${unit ? " " + unit : ""}`;
+
+  return (
+    `Cashflow-Daten für ${cashflow.company ?? cashflow.ticker} (${cashflow.ticker})` +
+    (cashflow.period ? `, ${cashflow.period}` : "") +
+    (cashflow.currency ? `, ${cashflow.currency}` : "") +
+    ":\n\n" +
+    `- Operativer Cashflow:     ${fmt(cashflow.operating)}\n` +
+    `- Investitions-Cashflow:   ${fmt(cashflow.investing)}\n` +
+    `- Finanzierungs-Cashflow:  ${fmt(cashflow.financing)}\n` +
+    `- Freier Cashflow:         ${fmt(cashflow.freeCashflow)}`
+  );
 }
 
-interface CallParams {
-  sourceUrl: string;
-  text?: string;
-  sourceMediaType?: SourceMediaType;
-  hint?: string;
-}
-
-function guessMediaType(url: string): SourceMediaType {
-  return /\.pdf(\?|#|$)/i.test(url) ? "application/pdf" : "text/html";
-}
-
-async function callClaude(params: CallParams): Promise<{ input: unknown }> {
+async function callClaude(userContent: string): Promise<unknown> {
   const client = getAnthropicClient();
-  const isTextMode = params.text !== undefined;
-
-  let userContent: string;
-  if (params.hint) {
-    userContent = isTextMode
-      ? `${params.hint}\n\nQuell-URL: ${params.sourceUrl}\n\n<text>\n${params.text}\n</text>`
-      : `${params.hint}\n\nURL: ${params.sourceUrl}`;
-  } else {
-    userContent = isTextMode
-      ? `Quell-URL: ${params.sourceUrl}\nQuelltyp: ${params.sourceMediaType === "application/pdf" ? "PDF" : "HTML"}\n\n<text>\n${params.text}\n</text>`
-      : `Bitte diese URL aufrufen und Cashflow-Daten per Tool-Call \`report_cashflow\` extrahieren:\n${params.sourceUrl}`;
-  }
-
-  const systemBlock = {
-    type: "text" as const,
-    text: SYSTEM_PROMPT,
-    cache_control: { type: "ephemeral" as const, ttl: "1h" as const },
-  };
-  const reportTool = {
-    name: TOOL_NAME,
-    description: "Gibt eine strukturierte Cashflow-Analyse der letzten Periode zurück.",
-    cache_control: { type: "ephemeral" as const, ttl: "1h" as const },
-    input_schema: TOOL_INPUT_SCHEMA,
-  };
-
-  let response: AnthropicResponse;
+  let response: { content: AnthropicBlock[] };
   try {
-    if (isTextMode) {
-      response = (await client.messages.create({
-        model: RESOLVER_MODEL,
-        max_tokens: 2048,
-        system: [systemBlock],
-        tools: [reportTool],
-        tool_choice: { type: "tool" as const, name: TOOL_NAME },
-        messages: [{ role: "user", content: userContent }],
-      })) as unknown as AnthropicResponse;
-    } else {
-      response = (await client.messages.create({
-        model: RESOLVER_MODEL,
-        max_tokens: 4096,
-        system: [systemBlock],
-        tools: [
-          { type: "web_search_20250305" as const, name: "web_search" as const, max_uses: 1 },
-          reportTool,
-        ],
-        tool_choice: { type: "any" as const },
-        messages: [{ role: "user", content: userContent }],
-      })) as unknown as AnthropicResponse;
-    }
+    response = (await client.messages.create({
+      model: RESOLVER_MODEL,
+      max_tokens: 512,
+      system: [
+        {
+          type: "text" as const,
+          text: SYSTEM_PROMPT,
+          cache_control: { type: "ephemeral" as const, ttl: "1h" as const },
+        },
+      ],
+      tools: [
+        {
+          name: TOOL_NAME,
+          description: "Gibt Bewertung und Interpretation der Cashflow-Daten zurück.",
+          cache_control: { type: "ephemeral" as const, ttl: "1h" as const },
+          input_schema: TOOL_INPUT_SCHEMA,
+        },
+      ],
+      tool_choice: { type: "tool" as const, name: TOOL_NAME },
+      messages: [{ role: "user", content: userContent }],
+    })) as unknown as { content: AnthropicBlock[] };
   } catch (e) {
     throw new LlmFailedError(
       e instanceof Error ? e.message : "Anthropic API call failed",
@@ -169,54 +112,50 @@ async function callClaude(params: CallParams): Promise<{ input: unknown }> {
   }
 
   const toolUse = response.content.find(
-    (b) => b.type === "tool_use" && (b as AnthropicMessageBlock & { name?: string }).name === TOOL_NAME,
+    (b) => b.type === "tool_use" && b.name === TOOL_NAME,
   );
-  if (!toolUse || toolUse.input === undefined) {
-    throw new LlmFailedError("Antwort enthält keinen report_cashflow-Block.");
+  if (!toolUse?.input) {
+    throw new LlmFailedError("Antwort enthält keinen report_interpretation-Block.");
   }
-  return { input: toolUse.input };
+  return toolUse.input;
 }
 
-export async function analyzeCashflow(params: {
-  sourceUrl: string;
-  requestedQuery: string;
-  sourceResolved: boolean;
-  text?: string;
-  sourceMediaType?: SourceMediaType;
-}): Promise<CashflowResult> {
-  const meta = {
-    sourceUrl: params.sourceUrl,
-    sourceMediaType: params.sourceMediaType ?? guessMediaType(params.sourceUrl),
-    requestedQuery: params.requestedQuery,
-    sourceResolved: params.sourceResolved,
-  };
+export async function generateInterpretation(
+  cashflow: EulerCashflow,
+  meta: { requestedQuery: string; sourceResolved: boolean },
+): Promise<CashflowResult> {
+  const allNull =
+    cashflow.operating === null &&
+    cashflow.investing === null &&
+    cashflow.financing === null &&
+    cashflow.freeCashflow === null;
 
-  const callParams: CallParams = {
-    sourceUrl: params.sourceUrl,
-    text: params.text,
-    sourceMediaType: params.sourceMediaType,
-  };
+  if (allNull) {
+    throw new NoCashflowDataError(
+      "Eulerpool lieferte keine Cashflow-Zahlen für dieses Unternehmen.",
+    );
+  }
 
-  let { input } = await callClaude(callParams);
-  let merged = withMeta(input, meta);
-  let parsed = CashflowResult.safeParse(merged);
+  const userContent = formatUserMessage(cashflow);
+
+  let raw = await callClaude(userContent);
+  let parsed = InterpretationOutput.safeParse(raw);
 
   if (!parsed.success) {
     const issues = parsed.error.issues
       .slice(0, 3)
       .map((i) => `${i.path.join(".")}: ${i.message}`)
       .join("; ");
-    const hint = `Vorheriger Versuch hatte Schema-Fehler: ${issues}. Bitte report_cashflow erneut aufrufen und die Felder korrigieren.`;
+    const retryContent =
+      `${userContent}\n\nHinweis: Vorheriger Versuch hatte Schema-Fehler: ${issues}. Bitte report_interpretation erneut aufrufen.`;
     try {
-      const retry = await callClaude({ ...callParams, hint });
-      input = retry.input;
+      raw = await callClaude(retryContent);
     } catch {
       throw new LlmInvalidOutputError(
         "Schema-Validierung fehlgeschlagen, Retry-Call konnte nicht ausgeführt werden.",
       );
     }
-    merged = withMeta(input, meta);
-    parsed = CashflowResult.safeParse(merged);
+    parsed = InterpretationOutput.safeParse(raw);
     if (!parsed.success) {
       throw new LlmInvalidOutputError(
         `Schema-Validierung zweimal fehlgeschlagen: ${parsed.error.issues[0]?.message ?? "unbekannt"}.`,
@@ -224,40 +163,26 @@ export async function analyzeCashflow(params: {
     }
   }
 
-  const result = parsed.data;
+  const { verdict, interpretation, confidence, warnings } = parsed.data;
 
-  const allFiguresNull =
-    result.figures.operating === null &&
-    result.figures.investing === null &&
-    result.figures.financing === null &&
-    result.figures.freeCashflow === null;
-
-  if (allFiguresNull && result.confidence !== "high") {
-    throw new NoCashflowDataError(
-      result.warnings[0] ??
-        "Auf der Seite konnten keine Cashflow-Zahlen identifiziert werden.",
-    );
-  }
-
-  return result;
-}
-
-function withMeta(
-  rawInput: unknown,
-  meta: {
-    sourceUrl: string;
-    sourceMediaType: SourceMediaType;
-    requestedQuery: string;
-    sourceResolved: boolean;
-  },
-): unknown {
-  if (typeof rawInput !== "object" || rawInput === null) return rawInput;
-  return {
-    ...rawInput,
-    sourceUrl: meta.sourceUrl,
-    sourceMediaType: meta.sourceMediaType,
+  return CashflowResult.parse({
+    company: cashflow.company ?? cashflow.ticker,
+    period: cashflow.period,
+    currency: cashflow.currency,
+    figures: {
+      operating: cashflow.operating,
+      investing: cashflow.investing,
+      financing: cashflow.financing,
+      freeCashflow: cashflow.freeCashflow,
+      unit: cashflow.unit,
+    },
+    verdict,
+    interpretation,
+    confidence,
+    warnings,
+    sourceUrl: null,
     requestedQuery: meta.requestedQuery,
     sourceResolved: meta.sourceResolved,
     analyzedAt: new Date().toISOString(),
-  };
+  });
 }
