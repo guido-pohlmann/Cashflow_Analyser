@@ -34,34 +34,46 @@ afterEach(() => {
 // ---------------------------------------------------------------------------
 
 describe("resolveCompany", () => {
-  it("returns ticker and companyName from search results", async () => {
-    mockFetch([{ ticker: "AAPL", name: "Apple Inc." }]);
+  it("returns ticker and companyName from wrapped { count, results } response", async () => {
+    mockFetch({ count: 1, results: [{ ticker: "AAPL", name: "Apple Inc." }] });
     const result = await resolveCompany("Apple");
     expect(result.ticker).toBe("AAPL");
     expect(result.companyName).toBe("Apple Inc.");
   });
 
+  it("also accepts plain array response", async () => {
+    mockFetch([{ ticker: "AAPL", name: "Apple Inc." }]);
+    const result = await resolveCompany("Apple");
+    expect(result.ticker).toBe("AAPL");
+  });
+
   it("prefers exact ticker match over first result", async () => {
-    mockFetch([
-      { ticker: "SAPG", name: "SAP Group Holdings" },
-      { ticker: "SAP", name: "SAP SE" },
-    ]);
+    mockFetch({
+      count: 2,
+      results: [
+        { ticker: "SAPG", name: "SAP Group Holdings" },
+        { ticker: "SAP", name: "SAP SE" },
+      ],
+    });
     const result = await resolveCompany("SAP");
     expect(result.ticker).toBe("SAP");
     expect(result.companyName).toBe("SAP SE");
   });
 
   it("falls back to first result when no exact ticker match", async () => {
-    mockFetch([
-      { ticker: "AAPL", name: "Apple Inc." },
-      { ticker: "AAPLX", name: "Apple Fund" },
-    ]);
+    mockFetch({
+      count: 2,
+      results: [
+        { ticker: "AAPL", name: "Apple Inc." },
+        { ticker: "AAPLX", name: "Apple Fund" },
+      ],
+    });
     const result = await resolveCompany("Apple");
     expect(result.ticker).toBe("AAPL");
   });
 
-  it("throws EulerPoolNotFoundError when search returns empty array", async () => {
-    mockFetch([]);
+  it("throws EulerPoolNotFoundError when search returns empty results", async () => {
+    mockFetch({ count: 0, results: [] });
     await expect(resolveCompany("NonExistentCorp")).rejects.toBeInstanceOf(
       EulerPoolNotFoundError,
     );
@@ -81,7 +93,7 @@ describe("resolveCompany", () => {
 
   it("uses cache on second call", async () => {
     const mockFn = vi.fn().mockResolvedValue(
-      jsonResponse([{ ticker: "TSLA", name: "Tesla Inc." }]),
+      jsonResponse({ count: 1, results: [{ ticker: "TSLA", name: "Tesla Inc." }] }),
     );
     vi.stubGlobal("fetch", mockFn);
     await resolveCompany("Tesla");
@@ -99,18 +111,18 @@ describe("resolveCompany", () => {
 // fetchCashflow
 // ---------------------------------------------------------------------------
 
-const APPLE_RECORD = {
-  operatingCashFlow: 118_254_000_000,
-  investingCashFlow: -21_977_000_000,
-  financingCashFlow: -110_776_000_000,
-  freeCashFlow: 108_807_000_000,
-  period: "FY2024",
-  currency: "USD",
-};
+// Matches the real Eulerpool XBRL-tagged line-item format.
+// freeCashflow = operating − capex = 118 254 − 9 447 = 108 807 (Mrd. USD)
+const APPLE_ITEMS = [
+  { tag: "NetCashProvidedByUsedInOperatingActivities", val: "118254000000.0000", fiscal_year: 2024, fiscal_period: "FY", unit: "USD" },
+  { tag: "NetCashProvidedByUsedInInvestingActivities", val: "-21977000000.0000", fiscal_year: 2024, fiscal_period: "FY", unit: "USD" },
+  { tag: "NetCashProvidedByUsedInFinancingActivities", val: "-110776000000.0000", fiscal_year: 2024, fiscal_period: "FY", unit: "USD" },
+  { tag: "PaymentsToAcquirePropertyPlantAndEquipment", val: "9447000000.0000",  fiscal_year: 2024, fiscal_period: "FY", unit: "USD" },
+];
 
 describe("fetchCashflow", () => {
   it("normalizes large absolute values to billion unit", async () => {
-    mockFetch([APPLE_RECORD]);
+    mockFetch(APPLE_ITEMS);
     const result = await fetchCashflow("AAPL");
     expect(result.unit).toBe("billion");
     expect(result.operating).toBeCloseTo(118.254, 1);
@@ -122,23 +134,22 @@ describe("fetchCashflow", () => {
     expect(result.ticker).toBe("AAPL");
   });
 
-  it("handles { data: [...] } response envelope", async () => {
-    mockFetch({ data: [APPLE_RECORD] });
+  it("picks most recent fiscal year when multiple years are present", async () => {
+    mockFetch([
+      ...APPLE_ITEMS,
+      { tag: "NetCashProvidedByUsedInOperatingActivities", val: "100000000000", fiscal_year: 2023, fiscal_period: "FY", unit: "USD" },
+    ]);
     const result = await fetchCashflow("AAPL");
-    expect(result.unit).toBe("billion");
+    expect(result.period).toBe("FY2024");
     expect(result.operating).toBeCloseTo(118.254, 1);
   });
 
   it("uses million unit for mid-size figures", async () => {
     mockFetch([
-      {
-        operatingCashFlow: 450_000_000,
-        investingCashFlow: -120_000_000,
-        financingCashFlow: -200_000_000,
-        freeCashFlow: 330_000_000,
-        period: "FY2024",
-        currency: "EUR",
-      },
+      { tag: "NetCashProvidedByUsedInOperatingActivities", val: "450000000", fiscal_year: 2024, fiscal_period: "FY", unit: "EUR" },
+      { tag: "NetCashProvidedByUsedInInvestingActivities", val: "-120000000", fiscal_year: 2024, fiscal_period: "FY", unit: "EUR" },
+      { tag: "NetCashProvidedByUsedInFinancingActivities", val: "-200000000", fiscal_year: 2024, fiscal_period: "FY", unit: "EUR" },
+      { tag: "PaymentsToAcquirePropertyPlantAndEquipment", val: "80000000",  fiscal_year: 2024, fiscal_period: "FY", unit: "EUR" },
     ]);
     const result = await fetchCashflow("SMCO");
     expect(result.unit).toBe("million");
@@ -146,8 +157,8 @@ describe("fetchCashflow", () => {
     expect(result.currency).toBe("EUR");
   });
 
-  it("handles null cashflow fields gracefully", async () => {
-    mockFetch([{ period: "FY2024", currency: "USD" }]);
+  it("handles missing cashflow tags gracefully", async () => {
+    mockFetch([{ tag: "SomeOtherTag", val: "0", fiscal_year: 2024, fiscal_period: "FY", unit: "USD" }]);
     const result = await fetchCashflow("AAPL");
     expect(result.operating).toBeNull();
     expect(result.freeCashflow).toBeNull();
@@ -161,8 +172,7 @@ describe("fetchCashflow", () => {
     );
   });
 
-  it("throws EulerPoolError when response is not parseable as records", async () => {
-    // A raw JSON string fails z.array(CashflowRecord) validation.
+  it("throws EulerPoolError when response is not a parseable array", async () => {
     vi.stubGlobal(
       "fetch",
       vi.fn().mockResolvedValue(
@@ -176,7 +186,7 @@ describe("fetchCashflow", () => {
   });
 
   it("uses cache on second call", async () => {
-    const mockFn = vi.fn().mockResolvedValue(jsonResponse([APPLE_RECORD]));
+    const mockFn = vi.fn().mockResolvedValue(jsonResponse(APPLE_ITEMS));
     vi.stubGlobal("fetch", mockFn);
     await fetchCashflow("AAPL");
     await fetchCashflow("AAPL");
@@ -190,7 +200,7 @@ describe("fetchCashflow", () => {
 
 describe("fetchKgvEulerpool", () => {
   it("returns KgvResult on valid ratios response", async () => {
-    mockFetch({ peRatio: 28.5, price: 189.84, currency: "USD" });
+    mockFetch({ pe_ratio: 28.5, price: 189.84, currency: "USD" });
     const result = await fetchKgvEulerpool("AAPL");
     expect(result).not.toBeNull();
     expect(result!.currentKgv).toBe(28.5);
@@ -200,7 +210,14 @@ describe("fetchKgvEulerpool", () => {
     expect(result!.fetchedAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
   });
 
-  it("returns result with null currentKgv when peRatio is absent", async () => {
+  it("also accepts camelCase peRatio fallback", async () => {
+    mockFetch({ peRatio: 22.0, price: 50.0, currency: "HKD" });
+    const result = await fetchKgvEulerpool("BYD");
+    expect(result).not.toBeNull();
+    expect(result!.currentKgv).toBe(22.0);
+  });
+
+  it("returns result with null currentKgv when pe_ratio is absent", async () => {
     mockFetch({ price: 100, currency: "EUR" });
     const result = await fetchKgvEulerpool("SAP");
     expect(result).not.toBeNull();
@@ -229,7 +246,7 @@ describe("fetchKgvEulerpool", () => {
   it("uses cache on second call", async () => {
     const mockFn = vi
       .fn()
-      .mockResolvedValue(jsonResponse({ peRatio: 22.0, price: 50.0, currency: "HKD" }));
+      .mockResolvedValue(jsonResponse({ pe_ratio: 22.0, price: 50.0, currency: "HKD" }));
     vi.stubGlobal("fetch", mockFn);
     await fetchKgvEulerpool("BYD");
     await fetchKgvEulerpool("BYD");

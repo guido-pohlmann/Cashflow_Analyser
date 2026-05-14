@@ -68,7 +68,7 @@ function normalizeUnit(values: (number | null)[]): { unit: CashflowUnit; factor:
   return { unit: "absolute", factor: 1 };
 }
 
-// --- API response shapes (snake_case as returned by Eulerpool /api/1) ---
+// --- API response shapes ---
 
 const SearchHit = z
   .object({
@@ -78,30 +78,22 @@ const SearchHit = z
   })
   .passthrough();
 
-// Supports both snake_case (actual API) and camelCase (tests / fallback).
-const CashflowRecord = z
+// Each fiscal year contains multiple tagged line items (XBRL taxonomy).
+// val is returned as a decimal string, e.g. "111482000000.0000".
+const CashflowLineItem = z
   .object({
-    operating_cash_flow: z.number().nullish(),
-    investing_cash_flow: z.number().nullish(),
-    financing_cash_flow: z.number().nullish(),
-    free_cash_flow: z.number().nullish(),
-    // camelCase fallback
-    operatingCashFlow: z.number().nullish(),
-    investingCashFlow: z.number().nullish(),
-    financingCashFlow: z.number().nullish(),
-    freeCashFlow: z.number().nullish(),
-    // period variants
-    period: z.string().nullish(),
+    tag: z.string(),
+    val: z.union([z.string(), z.number()]),
+    fiscal_year: z.number(),
     fiscal_period: z.string().nullish(),
-    fiscal_year: z.number().nullish(),
-    currency: z.string().nullish(),
+    unit: z.string().nullish(), // currency code, e.g. "USD"
   })
   .passthrough();
 
 const RatiosRecord = z
   .object({
     pe_ratio: z.number().nullish(),
-    peRatio: z.number().nullish(), // camelCase fallback
+    peRatio: z.number().nullish(), // camelCase fallback for test mocks
     price: z.number().nullish(),
     current_price: z.number().nullish(),
     currency: z.string().nullish(),
@@ -118,7 +110,15 @@ export async function resolveCompany(
   if (cached) return cached;
 
   const raw = await eulerFetch(`/equity/search?q=${encodeURIComponent(query.trim())}`);
-  const parsed = z.array(SearchHit).safeParse(raw);
+
+  // API returns { count, results: [...] }; tolerate plain array for tests.
+  const rawArray = Array.isArray(raw)
+    ? raw
+    : Array.isArray((raw as Record<string, unknown>).results)
+      ? (raw as Record<string, unknown>).results
+      : [];
+
+  const parsed = z.array(SearchHit).safeParse(rawArray);
   if (!parsed.success || parsed.data.length === 0) {
     throw new EulerPoolNotFoundError(`Kein Unternehmen gefunden für: ${query}`);
   }
@@ -135,7 +135,8 @@ export async function resolveCompany(
 }
 
 export async function fetchCashflow(ticker: string): Promise<EulerCashflow> {
-  const cacheKey = `ep:cf:v1:${sha256(ticker)}`;
+  // v2: reflects XBRL-tagged line-item parsing (v1 used flat record format).
+  const cacheKey = `ep:cf:v2:${sha256(ticker)}`;
   const cached = await cacheGet<EulerCashflow>(cacheKey);
   if (cached) return cached;
 
@@ -143,31 +144,35 @@ export async function fetchCashflow(ticker: string): Promise<EulerCashflow> {
     `/fundamentals/financials/${encodeURIComponent(ticker)}/cash-flow?fiscal_period=FY`,
   );
 
-  // Tolerate array, { data: [...] } envelope, or single object.
-  const records = Array.isArray(raw)
-    ? raw
-    : Array.isArray((raw as Record<string, unknown>).data)
-      ? (raw as Record<string, unknown>).data
-      : [raw];
-
-  const parsed = z.array(CashflowRecord).safeParse(records);
+  const records = Array.isArray(raw) ? raw : [];
+  const parsed = z.array(CashflowLineItem).safeParse(records);
   if (!parsed.success || parsed.data.length === 0) {
     throw new EulerPoolError(
       `Unerwartete Cashflow-Antwortstruktur für Ticker ${ticker}`,
     );
   }
 
-  const rec = parsed.data[0];
-  // snake_case (actual API) takes precedence over camelCase fallback.
-  const rawOp  = rec.operating_cash_flow  ?? rec.operatingCashFlow  ?? null;
-  const rawInv  = rec.investing_cash_flow  ?? rec.investingCashFlow  ?? null;
-  const rawFin  = rec.financing_cash_flow  ?? rec.financingCashFlow  ?? null;
-  const rawFree = rec.free_cash_flow       ?? rec.freeCashFlow       ?? null;
-  const period  =
-    rec.period ??
-    rec.fiscal_period ??
-    (rec.fiscal_year != null ? `FY${rec.fiscal_year}` : null) ??
-    null;
+  // Pick the most recent fiscal year available.
+  const maxYear = Math.max(...parsed.data.map((r) => r.fiscal_year));
+  const yearItems = parsed.data.filter((r) => r.fiscal_year === maxYear);
+
+  const findVal = (tag: string): number | null => {
+    const item = yearItems.find((r) => r.tag === tag);
+    if (!item) return null;
+    const n = typeof item.val === "number" ? item.val : parseFloat(item.val as string);
+    return isNaN(n) ? null : n;
+  };
+
+  const rawOp  = findVal("NetCashProvidedByUsedInOperatingActivities");
+  const rawInv = findVal("NetCashProvidedByUsedInInvestingActivities");
+  const rawFin = findVal("NetCashProvidedByUsedInFinancingActivities");
+  const capex  = findVal("PaymentsToAcquirePropertyPlantAndEquipment");
+  // FreeCashFlow = Operating − CapEx (not a direct field in this endpoint).
+  const rawFree = rawOp !== null && capex !== null ? rawOp - capex : null;
+
+  const sample  = yearItems[0];
+  const period  = sample ? `${sample.fiscal_period ?? "FY"}${maxYear}` : null;
+  const currency = sample?.unit ?? null;
 
   const { unit, factor } = normalizeUnit([rawOp, rawInv, rawFin, rawFree]);
 
@@ -175,8 +180,8 @@ export async function fetchCashflow(ticker: string): Promise<EulerCashflow> {
     ticker,
     company: null,
     period,
-    currency: rec.currency ?? null,
-    operating:    rawOp  !== null ? rawOp  / factor : null,
+    currency,
+    operating:    rawOp   !== null ? rawOp   / factor : null,
     investing:    rawInv  !== null ? rawInv  / factor : null,
     financing:    rawFin  !== null ? rawFin  / factor : null,
     freeCashflow: rawFree !== null ? rawFree / factor : null,
